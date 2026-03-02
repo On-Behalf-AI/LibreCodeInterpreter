@@ -115,17 +115,17 @@ async def upload_file(
             # Read file content
             content = await file.read()
 
-            # Store file directly
+            # Sanitize filename to match what will be used in container
+            sanitized_name = OutputProcessor.sanitize_filename(file.filename)
+
+            # Store with sanitized name so MinIO, sandbox, and cleanup all use the same name
             file_id = await file_service.store_uploaded_file(
                 session_id=session_id,
-                filename=file.filename,
+                filename=sanitized_name,
                 content=content,
                 content_type=file.content_type,
                 is_agent_file=is_agent_file,
             )
-
-            # Sanitize filename to match what will be used in container
-            sanitized_name = OutputProcessor.sanitize_filename(file.filename)
 
             uploaded_files.append(
                 {
