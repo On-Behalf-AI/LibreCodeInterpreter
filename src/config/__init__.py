@@ -201,6 +201,12 @@ class Settings(BaseSettings):
     state_capture_on_error: bool = Field(
         default=False, description="Capture and persist state even when execution fails"
     )
+    state_max_redis_size_mb: int = Field(
+        default=100,
+        ge=1,
+        le=500,
+        description="Max state size (MB, raw bytes) for Redis storage. Larger states go directly to MinIO",
+    )
 
     # State Archival Configuration - Hybrid Redis + MinIO storage
     state_archive_enabled: bool = Field(
