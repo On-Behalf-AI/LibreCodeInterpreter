@@ -1,7 +1,7 @@
 # Programmatic Tool Calling (`/exec/programmatic`) - Design Document
 
-> **Status**: Future Feature - Not Yet Implemented
-> **Last Updated**: December 2024
+> **Status**: Implemented (v1.2.0)
+> **Last Updated**: March 2026
 > **Source**: LibreChat `@librechat/agents` package (v3.0.40+)
 
 ## Overview

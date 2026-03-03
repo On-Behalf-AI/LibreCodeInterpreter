@@ -254,7 +254,7 @@ Inactive states are automatically archived to MinIO for long-term storage.
 
 ## Language-Specific Configuration
 
-All 12 language runtimes are pre-installed in the unified Docker image. No per-language images are needed.
+All 13 language runtimes are pre-installed in the unified Docker image. No per-language images are needed.
 
 ### Supported Languages
 
@@ -270,6 +270,7 @@ All 12 language runtimes are pre-installed in the unified Docker image. No per-l
 - **R** (`r`): R with dplyr, ggplot2, data.table, etc.
 - **Fortran** (`f90`): gfortran
 - **D** (`d`): LDC
+- **Bash** (`bash`): GNU Bash
 
 ## Configuration Management Tools
 
