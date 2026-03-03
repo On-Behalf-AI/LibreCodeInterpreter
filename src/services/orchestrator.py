@@ -520,11 +520,51 @@ class ExecutionOrchestrator:
 
         if ctx.new_state:
             try:
-                success, state_hash = await self.state_service.save_state(
-                    ctx.session_id,
-                    ctx.new_state,
-                    ttl_seconds=settings.state_ttl_seconds,
-                )
+                import base64
+
+                raw_size = len(base64.b64decode(ctx.new_state))
+                max_redis_bytes = settings.state_max_redis_size_mb * 1024 * 1024
+
+                if raw_size > max_redis_bytes:
+                    # Large state: store blob in MinIO, pointer in Redis
+                    logger.info(
+                        "State exceeds Redis threshold, storing in MinIO",
+                        session_id=ctx.session_id[:12],
+                        state_size_mb=round(raw_size / 1024 / 1024, 1),
+                        threshold_mb=settings.state_max_redis_size_mb,
+                    )
+                    archived = False
+                    if self.state_archival_service:
+                        archived = await self.state_archival_service.archive_state(
+                            ctx.session_id, ctx.new_state
+                        )
+                    if archived:
+                        success, state_hash = (
+                            await self.state_service.save_state_pointer(
+                                ctx.session_id,
+                                ctx.new_state,
+                                ttl_seconds=settings.state_ttl_seconds,
+                            )
+                        )
+                    else:
+                        # MinIO failed, fall back to Redis anyway
+                        logger.warning(
+                            "MinIO archival failed, falling back to Redis",
+                            session_id=ctx.session_id[:12],
+                        )
+                        success, state_hash = await self.state_service.save_state(
+                            ctx.session_id,
+                            ctx.new_state,
+                            ttl_seconds=settings.state_ttl_seconds,
+                        )
+                else:
+                    # Normal path: store in Redis
+                    success, state_hash = await self.state_service.save_state(
+                        ctx.session_id,
+                        ctx.new_state,
+                        ttl_seconds=settings.state_ttl_seconds,
+                    )
+
                 if success:
                     ctx.new_state_hash = state_hash
 
