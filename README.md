@@ -60,6 +60,7 @@ The dashboard requires the master API key for authentication.
 - **Sandbox Pool**: Pre-warmed nsjail sandboxes provide ~3ms acquisition time (vs 500-2000ms cold start)
 - **High Concurrency**: Thread-safe execution supporting 10+ concurrent requests
 - **Secure Execution**: nsjail-based sandboxed environments with namespace isolation, seccomp, and resource limits
+- **Programmatic Tool Calling (PTC)**: Enables AI agents to execute code that invokes external tools mid-execution via `POST /exec/programmatic`, with multi-round continuation support
 - **File Management**: Upload, download, and manage files within execution sessions
 - **Session Management**: Redis-based session handling with automatic cleanup
 - **S3-Compatible Storage**: MinIO integration for persistent file storage
@@ -79,8 +80,8 @@ The LibreCodeInterpreter is built with a focus on security, speed, and scalabili
 Key features include:
 
 - **Sandbox Pooling**: Pre-warmed nsjail sandboxes for sub-50ms execution.
-- **Stateless Execution**: Each execution is isolated and ephemeral.
-- **Session Persistence**: Optional state persistence for Python sessions.
+- **Isolated Execution**: Each execution runs in its own nsjail sandbox with namespace isolation.
+- **Session Persistence**: Optional state persistence for Python sessions across executions.
 
 For a deep dive into the system design, components, and request flows, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -89,6 +90,7 @@ For a deep dive into the system design, components, and request flows, see [ARCH
 The API provides endpoints for code execution, file management, and session state control.
 
 - `POST /exec`: Execute code in one of the 13 supported languages.
+- `POST /exec/programmatic`: Execute code with Programmatic Tool Calling (PTC) support for AI agent workflows.
 - `POST /upload`: Upload files for processing.
 - `GET /download`: Retrieve generated files.
 
@@ -100,7 +102,7 @@ For detailed information on all endpoints and specific language notes, see [ARCH
 
 We support 13 programming languages including Python, JavaScript, TypeScript, Go, Rust, Bash, and more. Each language has optimized execution paths and resource limits.
 
-See the [Supported Languages table](docs/ARCHITECTURE.md#supported-languages) for details on versions and included libraries.
+See the [Supported Languages list](docs/CONFIGURATION.md#supported-languages) for details on versions and included libraries.
 
 ## Configuration
 
