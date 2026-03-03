@@ -261,11 +261,16 @@ class ExecutionOrchestrator:
                             error=str(e),
                         )
 
+        # Effective entity_id: use entity_id if provided, fall back to user_id.
+        # LibreChat sends user_id but never entity_id, so this ensures
+        # session continuity works for LibreChat clients.
+        effective_entity_id = request.entity_id or request.user_id
+
         # Try to reuse session by entity_id (enables session continuity)
-        if request.entity_id:
+        if effective_entity_id:
             try:
                 entity_sessions = await self.session_service.list_sessions_by_entity(
-                    request.entity_id, limit=1
+                    effective_entity_id, limit=1
                 )
                 if entity_sessions:
                     existing = entity_sessions[0]
@@ -273,20 +278,20 @@ class ExecutionOrchestrator:
                         logger.debug(
                             "Reusing session by entity_id",
                             session_id=existing.session_id[:12],
-                            entity_id=request.entity_id,
+                            entity_id=effective_entity_id,
                         )
                         return existing.session_id
             except Exception as e:
                 logger.warning(
                     "Error looking up session by entity_id",
-                    entity_id=request.entity_id,
+                    entity_id=effective_entity_id,
                     error=str(e),
                 )
 
         # Create new session
         metadata = {}
-        if request.entity_id:
-            metadata["entity_id"] = request.entity_id
+        if effective_entity_id:
+            metadata["entity_id"] = effective_entity_id
         if request.user_id:
             metadata["user_id"] = request.user_id
 
