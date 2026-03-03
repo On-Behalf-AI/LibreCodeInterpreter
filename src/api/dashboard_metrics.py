@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from ..dependencies.auth import verify_master_key

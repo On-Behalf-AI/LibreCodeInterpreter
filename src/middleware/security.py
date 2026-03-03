@@ -4,7 +4,7 @@
 import hmac
 import time
 from datetime import datetime, timezone
-from typing import Callable, Optional
+from typing import Callable
 
 # Third-party imports
 import structlog

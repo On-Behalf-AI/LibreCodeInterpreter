@@ -20,7 +20,7 @@ States are archived to MinIO when:
 import asyncio
 import io
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 import structlog
 from minio import Minio
