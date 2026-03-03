@@ -176,7 +176,7 @@ async def _shutdown_services(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    logger.info("Starting Code Interpreter API", version="1.0.0")
+    logger.info("Starting Code Interpreter API", version="1.2.0")
 
     setup_graceful_shutdown()
 
@@ -217,7 +217,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Code Interpreter API",
     description="A secure API for executing code in isolated environments",
-    version="1.0.0",
+    version="1.2.0",
     docs_url="/docs" if settings.enable_docs else None,
     redoc_url="/redoc" if settings.enable_docs else None,
     debug=settings.api_debug,

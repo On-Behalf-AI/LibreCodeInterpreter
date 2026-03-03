@@ -7,33 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-03
+
 ### Added
+- Programmatic Tool Calling (PTC) API for structured tool interactions between LLMs and sandboxed code
+- Bash language support (13 languages now supported)
 - nsjail-based sandboxing for code execution (replaces Docker socket-based approach)
 - Single unified Docker image with all 13 language runtimes
+- State size threshold for hybrid Redis/MinIO storage (large states go directly to MinIO)
+- Session-level file reference tracking and user isolation
 - Hour and day periods for execution heatmap visualizations
 - MyPy type checking integration with comprehensive type hints
 - Dynamic Content Security Policy headers based on request path
+- SDL2 development libraries for Python graphical workloads
 
 ### Changed
 - Migrated from per-language Docker containers to nsjail sandboxes for isolation
 - Replaced ContainerPool/Manager/Executor with SandboxPool/Manager/Executor
 - Simplified Docker setup: single Dockerfile and docker-compose.yml
+- Enhanced session management with file reference tracking and user isolation
+- Updated API port configuration and removed HTTPS port references
 - Improved heatmap UI styling for better visualization
 - Updated Pydantic settings configuration for better type safety
+- Bumped 5 dependencies to latest minor/patch versions
+
+### Fixed
+- REPL file detection for pandas export methods (to_csv, to_excel, etc.)
 
 ### Removed
 - Per-language Docker images and build-images.sh script
 - Docker SDK dependency (no Docker socket needed)
 - docker-compose.ghcr.yml (single compose file now)
+- Container-based execution service (replaced by sandbox service)
+- SQLite metrics storage (replaced by in-memory metrics)
+- State API endpoints (consolidated into session management)
 - Deprecated baseline performance documentation files
-- Legacy deployment scripts
+- Legacy deployment and WAN network scripts
 
-## [0.1.0] - 2024-12-XX
+## [0.1.0] - 2025-12-26
 
 ### Added
 
 #### Core Features
-- Multi-language code execution supporting 13 languages: Python, JavaScript, TypeScript, Go, Java, C, C++, PHP, Rust, R, Fortran, D, and Bash
+- Multi-language code execution supporting 12 languages: Python, JavaScript, TypeScript, Go, Java, C, C++, PHP, Rust, R, Fortran, and D
 - FastAPI-based REST API with interactive documentation
 - Sandboxed execution environments with comprehensive security controls
 - Redis-based session management with automatic cleanup
@@ -61,11 +77,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - File listing and deletion per session
 
 #### Monitoring & Observability
-- SQLite-based metrics storage with historical tracking
 - Admin dashboard API for system analytics and monitoring
 - Execution metrics (latency, success rates, language usage)
 - API metrics (request counts, error rates, endpoint usage)
-- Comprehensive health check endpoints for Redis, MinIO, and Docker
+- Comprehensive health check endpoints for Redis, MinIO, and sandbox health
 - Detailed health status reporting
 - Structured JSON logging with configurable levels
 - Request/response logging middleware
@@ -96,15 +111,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Metrics collection documentation
 
 #### Developer Experience
-- HTTPS/SSL support with automatic HTTP redirection
 - CORS configuration for web clients
-- Parallel Docker image building with BuildKit
 - Environment-specific configuration with .env support
 - Hot reload in development mode
 
 ### Changed
 - Refactored execution service for better modularity
-- Updated Docker build process with parallel builds
 - Enhanced R execution environment with additional graphics libraries
 - Improved state archival with better logging and error handling
 - Consolidated documentation from README to dedicated files
@@ -120,5 +132,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enforced resource limits to prevent DoS attacks
 - Secured file upload/download with session validation
 
-[unreleased]: https://github.com/LibreCodeInterpreter/LibreCodeInterpreter/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/LibreCodeInterpreter/LibreCodeInterpreter/releases/tag/v0.1.0
+[unreleased]: https://github.com/usnavy13/LibreCodeInterpreter/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/usnavy13/LibreCodeInterpreter/compare/v0.1.0...v1.2.0
+[0.1.0]: https://github.com/usnavy13/LibreCodeInterpreter/releases/tag/v0.1.0

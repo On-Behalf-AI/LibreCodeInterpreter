@@ -8,7 +8,7 @@ import os
 import re
 import shlex
 import signal
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import structlog
 

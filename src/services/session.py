@@ -4,7 +4,7 @@
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Dict
+from typing import List, Optional
 
 # Third-party imports
 import redis.asyncio as redis

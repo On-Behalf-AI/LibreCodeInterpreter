@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 
-from ..config import settings
 from ..dependencies.auth import verify_master_key
 from ..services.api_key_manager import get_api_key_manager
 from ..services.metrics import metrics_service as unified_metrics
