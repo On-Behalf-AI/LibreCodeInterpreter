@@ -402,3 +402,35 @@ class TestLinkedFiles:
         assert result is True
         mock_minio_client.remove_object.assert_not_called()
         mock_redis_client.delete.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_last_linked_file_cleans_orphaned_shared_object(
+        self, file_service, mock_minio_client, mock_redis_client
+    ):
+        """The final alias cleanup should delete the shared object once the source is gone."""
+        mock_redis_client.hgetall.side_effect = [
+            {
+                "file_id": "linked-file",
+                "filename": "report.csv",
+                "content_type": "text/csv",
+                "object_key": "sessions/source/uploads/source-file",
+                "session_id": "target-session",
+                "created_at": datetime.utcnow().isoformat(),
+                "size": "12",
+                "path": "/report.csv",
+                "type": "linked_input",
+                "source_session_id": "source-session",
+                "source_file_id": "source-file",
+                "is_read_only": "1",
+            },
+            {},
+        ]
+        mock_redis_client.smembers.return_value = set()
+
+        result = await file_service.delete_file("target-session", "linked-file")
+
+        assert result is True
+        mock_minio_client.remove_object.assert_called_once_with(
+            file_service.bucket_name,
+            "sessions/source/uploads/source-file",
+        )
