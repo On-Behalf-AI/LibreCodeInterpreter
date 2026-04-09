@@ -15,10 +15,10 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.11"
-  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
-  RUNTIME_CORE_IMAGE: ghcr.io/${{ github.repository }}/runtime-core
-  RUNTIME_R_IMAGE: ghcr.io/${{ github.repository }}/runtime-r
-  BUILDCACHE_IMAGE: ghcr.io/${{ github.repository }}/buildcache
+  REGISTRY_IMAGE: ghcr.io/usnavy13/librecodeinterpreter
+  RUNTIME_CORE_IMAGE: ghcr.io/usnavy13/librecodeinterpreter/runtime-core
+  RUNTIME_R_IMAGE: ghcr.io/usnavy13/librecodeinterpreter/runtime-r
+  BUILDCACHE_IMAGE: ghcr.io/usnavy13/librecodeinterpreter/buildcache
   LOCAL_API_IMAGE_AMD64: code-interpreter:nightly-amd64
   LOCAL_API_IMAGE_ARM64: code-interpreter:nightly-arm64
 

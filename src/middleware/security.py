@@ -120,10 +120,11 @@ class SecurityMiddleware:
         """Validate request content type."""
         # Only validate content type for non-file upload requests.
         # File uploads are handled by the files API with specific validation.
-        if (
-            request.method in ["POST", "PUT", "PATCH"]
-            and not request.url.path.startswith("/upload")
-        ):
+        if request.method in [
+            "POST",
+            "PUT",
+            "PATCH",
+        ] and not request.url.path.startswith("/upload"):
             content_type = request.headers.get("content-type", "")
             allowed_types = [
                 "application/json",
