@@ -1,6 +1,7 @@
 """Pytest configuration and shared fixtures."""
 
 import asyncio
+from pathlib import Path
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,7 +9,6 @@ from typing import AsyncGenerator, Generator
 import redis.asyncio as redis
 from minio import Minio
 from datetime import datetime, timezone
-from pathlib import Path
 import os
 
 # Set test environment before importing config
@@ -262,3 +262,33 @@ def unique_session_id():
     import uuid
 
     return f"test-session-{uuid.uuid4().hex[:8]}"
+
+
+def pytest_collection_modifyitems(config, items):
+    """Apply shared markers based on the suite layer."""
+    contract_only_files = (
+        "tests/integration/test_api_contracts.py",
+        "tests/integration/test_librechat_compat.py",
+        "tests/integration/test_programmatic_api.py",
+    )
+    slow_files = (
+        "tests/functional/test_client_replay.py",
+        "tests/functional/test_concurrent_file_exec.py",
+        "tests/functional/test_generated_artifacts.py",
+        "tests/functional/test_mounted_file_edits.py",
+        "tests/functional/test_timing.py",
+    )
+    client_replay_files = (
+        "tests/functional/test_client_replay.py",
+    )
+
+    for item in items:
+        path = Path(str(item.fspath)).as_posix()
+        if "/tests/functional/" in path or path.startswith("tests/functional/"):
+            item.add_marker(pytest.mark.live_api)
+        if path.endswith(contract_only_files):
+            item.add_marker(pytest.mark.contract_only)
+        if path.endswith(slow_files):
+            item.add_marker(pytest.mark.slow)
+        if path.endswith(client_replay_files):
+            item.add_marker(pytest.mark.client_replay)

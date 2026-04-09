@@ -1,18 +1,9 @@
 """
-LibreChat Compatibility Tests - Strict Acceptance Tests
+LibreChat request/response contract tests.
 
-This test suite verifies EXACT LibreChat API compatibility by testing only
-what LibreChat actually sends and expects. These tests serve as acceptance
-criteria for LibreChat integration.
-
-Source of truth:
-- @librechat/agents package: src/tools/CodeExecutor.ts
-- LibreChat API: api/server/services/Files/Code/crud.js, process.js
-
-Test approach:
-- Mock ExecutionOrchestrator.execute() to return ExecResponse directly
-- Tests verify the API contract, not internal implementation
-- Only tests actual LibreChat behavior, no backward compatibility tests
+These are fast in-process checks for the wire contract only. They intentionally
+mock the orchestrator and are not the source of truth for end-to-end client
+compatibility; the live replay coverage lives under tests/functional/.
 """
 
 import pytest
