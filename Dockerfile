@@ -1,29 +1,38 @@
-# syntax=docker/dockerfile:1.4
-# Unified Dockerfile: All 12 language runtimes + nsjail + API
-# This image supports sandboxed code execution without requiring Docker-in-Docker.
+# syntax=docker/dockerfile:1.7
+# Unified multi-stage Dockerfile:
+# - runtime-core: common polyglot runtime without R
+# - runtime-r: heavyweight R layer
+# - app: API/application layer
 
-FROM ubuntu:24.04
+ARG UBUNTU_VERSION=24.04
+ARG GO_VERSION=1.23.6
+ARG NSJAIL_REF=b7ff9f30188a7845d41366e1e3b3929f464ac443
+ARG RUNTIME_R_BASE=runtime-r
+
+FROM ubuntu:${UBUNTU_VERSION} AS runtime-core
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG GO_VERSION
+ARG NSJAIL_REF
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # ============================================
 # System dependencies + nsjail
 # ============================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Build tools for nsjail
     git cmake build-essential pkg-config \
     libprotobuf-dev protobuf-compiler \
     libnl-3-dev libnl-route-3-dev \
     flex bison \
-    # Common system tools
     curl wget ca-certificates gnupg software-properties-common \
-    # Shared libraries needed across languages
     libssl-dev libffi-dev libxml2-dev libxslt-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Build nsjail from source
-RUN git clone --depth 1 https://github.com/google/nsjail.git /tmp/nsjail && \
-    cd /tmp/nsjail && make -j$(nproc) && \
+RUN git clone https://github.com/google/nsjail.git /tmp/nsjail && \
+    cd /tmp/nsjail && \
+    git checkout "${NSJAIL_REF}" && \
+    make -j"$(nproc)" && \
     cp /tmp/nsjail/nsjail /usr/local/bin/nsjail && \
     chmod +x /usr/local/bin/nsjail && \
     rm -rf /tmp/nsjail
@@ -34,7 +43,6 @@ RUN git clone --depth 1 https://github.com/google/nsjail.git /tmp/nsjail && \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv python3-dev \
     python3-tk \
-    # Libraries needed for Python packages (from python.Dockerfile)
     gcc g++ make pkg-config \
     libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev \
     libjpeg-dev libpng-dev libtiff-dev libopenjp2-7-dev \
@@ -46,7 +54,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     antiword unrtf \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python requirements files
 COPY docker/requirements/python-core.txt /tmp/python-core.txt
 COPY docker/requirements/python-analysis.txt /tmp/python-analysis.txt
 COPY docker/requirements/python-visualization.txt /tmp/python-visualization.txt
@@ -54,12 +61,10 @@ COPY docker/requirements/python-documents.txt /tmp/python-documents.txt
 COPY docker/requirements/python-utilities.txt /tmp/python-utilities.txt
 COPY docker/requirements/python-new.txt /tmp/python-new.txt
 
-# Install Python build tooling
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install --break-system-packages --ignore-installed \
     "pip<24.1" "setuptools<70" wheel "packaging<24"
 
-# Install Python packages in layers (most stable first)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --break-system-packages -r /tmp/python-core.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -86,10 +91,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy Node.js package list and install globally
 COPY docker/requirements/nodejs.txt /tmp/nodejs.txt
 RUN --mount=type=cache,target=/root/.npm \
-    cat /tmp/nodejs.txt | grep -v '^#' | grep -v '^$' | xargs npm install -g && \
+    grep -v '^#' /tmp/nodejs.txt | grep -v '^$' | xargs npm install -g && \
     rm -f /tmp/nodejs.txt
 
 ENV NODE_ENV=sandbox \
@@ -98,7 +102,6 @@ ENV NODE_ENV=sandbox \
 # ============================================
 # Go
 # ============================================
-ARG GO_VERSION=1.23.6
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz" \
     | tar -C /usr/local -xzf -
 
@@ -108,7 +111,6 @@ ENV PATH="/usr/local/go/bin:${PATH}" \
     GOPROXY=https://proxy.golang.org,direct \
     GOSUMDB=sum.golang.org
 
-# Pre-download Go modules
 COPY docker/requirements/go.mod /tmp/gosetup/go.mod
 RUN --mount=type=cache,target=/usr/local/gopath/pkg/mod \
     cd /tmp/gosetup && go mod download && \
@@ -121,32 +123,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-jdk \
     && rm -rf /var/lib/apt/lists/*
 
-# Download Java libraries (from java.Dockerfile)
 RUN mkdir -p /opt/java/lib && cd /opt/java/lib && \
-    # Apache Commons
     wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-csv/1.10.0/commons-csv-1.10.0.jar && \
     wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar && \
     wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar && \
     wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-collections4/4.4/commons-collections4-4.4.jar && \
     wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-compress/1.25.0/commons-compress-1.25.0.jar && \
     wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-text/1.11.0/commons-text-1.11.0.jar && \
-    # Jackson JSON
     wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.16.0/jackson-core-2.16.0.jar && \
     wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.16.0/jackson-databind-2.16.0.jar && \
     wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.16.0/jackson-annotations-2.16.0.jar && \
-    # Apache POI (Excel)
     wget -q https://repo1.maven.org/maven2/org/apache/poi/poi/5.2.5/poi-5.2.5.jar && \
     wget -q https://repo1.maven.org/maven2/org/apache/poi/poi-ooxml/5.2.5/poi-ooxml-5.2.5.jar && \
     wget -q https://repo1.maven.org/maven2/org/apache/poi/poi-ooxml-lite/5.2.5/poi-ooxml-lite-5.2.5.jar && \
     wget -q https://repo1.maven.org/maven2/org/apache/xmlbeans/xmlbeans/5.2.0/xmlbeans-5.2.0.jar && \
-    # Apache PDFBox
     wget -q https://repo1.maven.org/maven2/org/apache/pdfbox/pdfbox/3.0.1/pdfbox-3.0.1.jar && \
     wget -q https://repo1.maven.org/maven2/org/apache/pdfbox/fontbox/3.0.1/fontbox-3.0.1.jar && \
-    # Google Guava
     wget -q https://repo1.maven.org/maven2/com/google/guava/guava/33.0.0-jre/guava-33.0.0-jre.jar && \
-    # Gson
     wget -q https://repo1.maven.org/maven2/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar && \
-    # Joda-Time
     wget -q https://repo1.maven.org/maven2/joda-time/joda-time/2.12.5/joda-time-2.12.5.jar
 
 ENV JAVA_OPTS="-Xmx512m -Xms128m" \
@@ -157,19 +151,14 @@ ENV JAVA_OPTS="-Xmx512m -Xms128m" \
 # ============================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
-    # Math and science libraries
     libgsl-dev libblas-dev liblapack-dev \
-    # File handling libraries
     libzip-dev \
-    # JSON library
     nlohmann-json3-dev \
-    # CSV library
     libcsv-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CC=gcc \
-    CXX=g++ \
-    PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig
+    CXX=g++
 
 # ============================================
 # PHP
@@ -181,10 +170,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libonig-dev unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
-# Install PHP packages globally via Composer
 ENV COMPOSER_HOME=/opt/composer/global
 RUN mkdir -p /opt/composer/global && \
     composer global require \
@@ -213,33 +200,10 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
 
 ENV PATH="/usr/local/cargo/bin:${PATH}"
 
-# Pre-compile Rust crates
 COPY docker/requirements/rust-Cargo.toml /tmp/rust-cache/Cargo.toml
 RUN mkdir -p /tmp/rust-cache/src && echo 'fn main() {}' > /tmp/rust-cache/src/main.rs && \
     cd /tmp/rust-cache && cargo build --release || true && \
     rm -rf /tmp/rust-cache
-
-# ============================================
-# R
-# ============================================
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    r-base r-base-dev \
-    libcurl4-openssl-dev \
-    libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
-    libtiff5-dev libjpeg-dev libcairo2-dev \
-    libxt-dev libx11-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install R packages
-RUN R -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); \
-    install.packages(c( \
-        'dplyr', 'tidyr', 'data.table', 'magrittr', \
-        'ggplot2', 'lattice', 'scales', 'Cairo', \
-        'readr', 'readxl', 'writexl', 'jsonlite', 'xml2', \
-        'MASS', 'survival', 'lubridate', 'stringr', 'glue' \
-    ))"
-
-ENV R_LIBS_USER=/usr/local/lib/R/site-library
 
 # ============================================
 # Fortran (gfortran)
@@ -264,31 +228,58 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# REPL Server + entrypoint
-# ============================================
-COPY docker/repl_server.py /opt/repl_server.py
-COPY docker/ptc_server.py /opt/ptc_server.py
-COPY docker/entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/repl_server.py /opt/ptc_server.py /opt/entrypoint.sh
-
-# ============================================
 # Sandbox directory structure
 # ============================================
 RUN mkdir -p /var/lib/code-interpreter/sandboxes && \
     mkdir -p /mnt/data && \
     mkdir -p /tmp/empty_proc
 
-# Create non-root user for code execution (uid 1001)
 RUN groupadd -g 1001 codeuser && \
     useradd -u 1001 -g codeuser -m codeuser && \
     chown -R codeuser:codeuser /mnt/data
 
+ENV PATH="/usr/local/cargo/bin:/usr/local/go/bin:/opt/composer/global/vendor/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}" \
+    SANDBOX_BASE_DIR=/var/lib/code-interpreter/sandboxes
+
+FROM runtime-core AS runtime-r
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # ============================================
-# API installation
+# R
 # ============================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    r-base r-base-dev \
+    libcurl4-openssl-dev \
+    libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
+    libtiff5-dev libjpeg-dev libcairo2-dev \
+    libxt-dev libx11-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN R -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); \
+    install.packages(c( \
+        'dplyr', 'tidyr', 'data.table', 'magrittr', \
+        'ggplot2', 'lattice', 'scales', 'Cairo', \
+        'readr', 'readxl', 'writexl', 'jsonlite', 'xml2', \
+        'MASS', 'survival', 'lubridate', 'stringr', 'glue' \
+    ))"
+
+ENV R_LIBS_USER=/usr/local/lib/R/site-library
+
+FROM ${RUNTIME_R_BASE} AS app
+
+ARG DEBIAN_FRONTEND=noninteractive
+
 WORKDIR /app
 
-# Install API dependencies (excluding docker package)
+# Keep the application layer thin so app-only changes do not invalidate runtime stages.
+COPY docker/repl_server.py /opt/repl_server.py
+COPY docker/ptc_server.py /opt/ptc_server.py
+COPY docker/entrypoint.sh /opt/entrypoint.sh
+RUN chmod +x /opt/repl_server.py /opt/ptc_server.py /opt/entrypoint.sh
+
 COPY requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     grep -v '^docker==' /tmp/requirements.txt | \
@@ -296,17 +287,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --break-system-packages --ignore-installed -r /dev/stdin && \
     rm -f /tmp/requirements.txt
 
-# Copy API source code and dashboard
 COPY src/ /app/src/
 COPY dashboard/ /app/dashboard/
 
-# ============================================
-# Final PATH and environment
-# ============================================
-ENV PATH="/usr/local/cargo/bin:/usr/local/go/bin:/opt/composer/global/vendor/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}" \
-    SANDBOX_BASE_DIR=/var/lib/code-interpreter/sandboxes
-
-# Security: strip SUID/SGID bits from all binaries
 RUN find / -path /proc -prune -o -path /sys -prune -o \
     \( -perm -4000 -o -perm -2000 \) -type f -exec chmod u-s,g-s {} + 2>/dev/null || true
 

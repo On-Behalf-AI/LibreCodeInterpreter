@@ -1,18 +1,10 @@
 services:
-  # Code Interpreter API (unified image with nsjail sandboxing)
   api:
-    build:
-      context: .
-      target: app
-      args:
-        RUNTIME_R_BASE: ${RUNTIME_R_BASE:-runtime-r}
-    image: ${API_IMAGE:-code-interpreter:nsjail}
-    pull_policy: never
+    image: ${API_IMAGE:-ghcr.io/usnavy13/librecodeinterpreter:main}
+    pull_policy: always
     container_name: code-interpreter-api
     restart: unless-stopped
-    # tini init process reaps zombie nsjail/python child processes
     init: true
-    # nsjail requires these capabilities to create namespaces and cgroups
     cap_add:
       - SYS_ADMIN
     security_opt:
@@ -22,7 +14,6 @@ services:
     env_file:
       - .env
     environment:
-      # Container-specific overrides (service discovery within compose network)
       - REDIS_HOST=redis
       - MINIO_ENDPOINT=minio:9000
     volumes:
@@ -41,9 +32,7 @@ services:
       timeout: 15s
       retries: 3
       start_period: 30s
-    # No /var/run/docker.sock mount needed
 
-  # Redis for session management
   redis:
     image: redis:7-alpine
     container_name: code-interpreter-redis
@@ -64,7 +53,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # MinIO for file storage
   minio:
     image: minio/minio:latest
     container_name: code-interpreter-minio
@@ -84,7 +72,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # MinIO bucket initialization
   minio-init:
     image: minio/mc:latest
     depends_on:
