@@ -48,25 +48,13 @@ class PTCToolResult(BaseModel):
 class PTCFileInput(BaseModel):
     """File payload for PTC initial execution.
 
-    Supports both:
-    - LibreChat-style file references: {session_id, id, name}
-    - Legacy inline files: {filename, content}
+    Matches the LibreChat/librechat-agents CodeEnvFile shape:
+    {session_id, id, name}
     """
 
-    id: Optional[str] = Field(default=None, description="File identifier")
-    name: Optional[str] = Field(
-        default=None, description="Filename for a referenced session file"
-    )
-    session_id: Optional[str] = Field(
-        default=None, description="Source session for a referenced file"
-    )
-    filename: Optional[str] = Field(
-        default=None, description="Filename for inline file content"
-    )
-    content: Optional[Any] = Field(
-        default=None,
-        description="Inline file content for non-reference callers",
-    )
+    id: str = Field(..., description="File identifier")
+    name: str = Field(..., description="Original filename for the referenced file")
+    session_id: str = Field(..., description="Source session for a referenced file")
 
 
 class ProgrammaticExecRequest(BaseModel):
@@ -102,7 +90,8 @@ class ProgrammaticExecRequest(BaseModel):
         le=300000,
     )
     files: List[PTCFileInput] = Field(
-        default_factory=list, description="Files to mount in sandbox"
+        default_factory=list,
+        description="Referenced prior-session files to mount in the sandbox",
     )
 
     # Continuation fields

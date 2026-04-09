@@ -83,12 +83,10 @@ class TestUpdateFileContent:
     async def test_update_file_content_updates_metadata(
         self, file_service, mock_minio_client, mock_redis_client
     ):
-        """Test that update_file_content updates size, state_hash, execution_id."""
+        """Test that update_file_content updates file size metadata."""
         session_id = "test-session-123"
         file_id = "test-file-456"
         new_content = b"new content with some data"
-        state_hash = "abc123def456"
-        execution_id = "exec-789"
 
         mock_redis_client.hgetall.return_value = {
             "file_id": file_id,
@@ -101,8 +99,6 @@ class TestUpdateFileContent:
             session_id=session_id,
             file_id=file_id,
             content=new_content,
-            state_hash=state_hash,
-            execution_id=execution_id,
         )
 
         assert result is True
@@ -112,9 +108,6 @@ class TestUpdateFileContent:
         mapping = hset_call.kwargs.get("mapping")
         assert mapping is not None
         assert mapping["size"] == len(new_content)
-        assert mapping["state_hash"] == state_hash
-        assert mapping["execution_id"] == execution_id
-        assert "last_used_at" in mapping
 
     @pytest.mark.asyncio
     async def test_update_file_content_file_not_found(
@@ -213,10 +206,10 @@ class TestUpdateFileContent:
         assert "image/png" in str(put_call)
 
     @pytest.mark.asyncio
-    async def test_update_file_content_optional_state_hash(
+    async def test_update_file_content_only_updates_size(
         self, file_service, mock_minio_client, mock_redis_client
     ):
-        """Test that state_hash and execution_id are optional."""
+        """Test that update_file_content only updates size metadata."""
         session_id = "test-session"
         file_id = "file-id"
 
@@ -235,8 +228,6 @@ class TestUpdateFileContent:
 
         assert result is True
 
-        # Check that state_hash and execution_id are not in updates
         hset_call = mock_redis_client.hset.call_args
         mapping = hset_call.kwargs.get("mapping")
-        assert "state_hash" not in mapping
-        assert "execution_id" not in mapping
+        assert mapping == {"size": len(b"just content, no state")}

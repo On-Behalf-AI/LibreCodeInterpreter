@@ -212,7 +212,13 @@ class TestProgrammaticExecRequest:
             user_id="user-456",
             entity_id="asst_abc",
             timeout=60000,
-            files=[{"filename": "test.txt", "content": "data"}],
+            files=[
+                {
+                    "session_id": "source-session",
+                    "id": "file-123",
+                    "name": "test.txt",
+                }
+            ],
         )
         assert req.session_id == "sess-123"
         assert req.user_id == "user-456"
@@ -241,6 +247,14 @@ class TestProgrammaticExecRequest:
         """PTC timeout should use the public millisecond contract."""
         with pytest.raises(ValidationError):
             ProgrammaticExecRequest(code="x", timeout=60)
+
+    def test_request_rejects_legacy_inline_file_shape(self):
+        """PTC no longer accepts inline {filename, content} payloads."""
+        with pytest.raises(ValidationError):
+            ProgrammaticExecRequest(
+                code="print('hello')",
+                files=[{"filename": "test.txt", "content": "data"}],
+            )
 
     def test_continuation_request(self):
         """Continuation request with token and results should be valid."""
@@ -453,7 +467,7 @@ class TestProgrammaticServiceStartExecution:
         """LibreChat-style file refs should be resolved and mounted."""
         ptc_service._file_service.get_file_info.return_value = FileInfo(
             file_id="file-123",
-            filename="report.csv",
+            filename="server-side.bin",
             size=14,
             content_type="text/csv",
             created_at=datetime.utcnow(),
@@ -691,6 +705,35 @@ class TestProgrammaticServiceContinueExecution:
             )
 
         mock_timeout.cancel.assert_called_once()
+
+
+class TestProgrammaticServiceReadResponse:
+    """Tests for low-level PTC response handling."""
+
+    async def test_read_response_reports_timeout_when_process_exits_at_deadline(
+        self, ptc_service, mock_sandbox_info
+    ):
+        """EOF at the execution deadline should surface as a timeout."""
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 137
+        mock_proc.pid = 12345
+        mock_proc.stdout = AsyncMock()
+        mock_proc.stdout.read = AsyncMock(return_value=b"")
+        mock_proc.stderr = AsyncMock()
+        mock_proc.stderr.read = AsyncMock(return_value=b"")
+
+        with patch("time.monotonic", return_value=10.0):
+            response = await ptc_service._read_ptc_response(
+                proc=mock_proc,
+                sandbox_info=mock_sandbox_info,
+                session_id="sess-timeout",
+                timeout=1,
+                execution_deadline=10.0,
+                execution_timeout_seconds=1,
+            )
+
+        assert response.status == "error"
+        assert response.error == "Execution timed out after 1 seconds"
 
 
 # =============================================================================

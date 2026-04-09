@@ -59,7 +59,7 @@ interface ProgrammaticExecutionRequest {
   tools: LCTool[]; // Filtered tool definitions
   session_id?: string; // Optional: for file persistence
   timeout?: number; // 1000-300000ms (default: 60000)
-  files?: Array<CodeEnvFile | InlinePTCFile>; // Optional: initial sandbox files
+  files?: CodeEnvFile[]; // Optional: initial sandbox files
 }
 
 interface LCTool {
@@ -72,11 +72,6 @@ interface CodeEnvFile {
   id: string; // File identifier
   name: string; // Original filename
   session_id: string; // Source session
-}
-
-interface InlinePTCFile {
-  filename: string;
-  content: string; // Legacy inline payload, still accepted
 }
 ```
 
@@ -249,7 +244,7 @@ Unlike `/exec`, sandboxes for programmatic execution must:
 - Have **longer TTL** (match request timeout, up to 5 minutes)
 - Be **cleaned up** on completion, error, or timeout
 - Support **session file access** at `/mnt/data/`
-- Accept LibreChat `CodeEnvFile` references without requiring inline file blobs
+- Accept only LibreChat `CodeEnvFile` references for prior-session files
 
 ### 4. Round-Trip Limits
 

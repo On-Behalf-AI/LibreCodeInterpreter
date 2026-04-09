@@ -287,14 +287,6 @@ class FileService(FileServiceInterface):
         if not metadata:
             return None
 
-        # Parse last_used_at if present
-        last_used_at = None
-        if metadata.get("last_used_at"):
-            try:
-                last_used_at = datetime.fromisoformat(metadata["last_used_at"])
-            except (ValueError, TypeError):
-                pass
-
         return FileInfo(
             file_id=file_id,
             filename=metadata["filename"],
@@ -302,9 +294,6 @@ class FileService(FileServiceInterface):
             content_type=metadata["content_type"],
             created_at=metadata["created_at"],
             path=metadata["path"],
-            execution_id=metadata.get("execution_id"),
-            state_hash=metadata.get("state_hash"),
-            last_used_at=last_used_at,
         )
 
     async def list_files(self, session_id: str) -> List[FileInfo]:
@@ -454,8 +443,6 @@ class FileService(FileServiceInterface):
         session_id: str,
         filename: str,
         content: bytes,
-        execution_id: Optional[str] = None,
-        state_hash: Optional[str] = None,
     ) -> str:
         """Store a file generated during code execution.
 
@@ -463,8 +450,6 @@ class FileService(FileServiceInterface):
             session_id: Session identifier
             filename: Name of the file
             content: File content as bytes
-            execution_id: Optional ID of the execution that created this file
-            state_hash: Optional SHA256 hash of the Python state at creation time
 
         Returns:
             The generated file_id
@@ -496,7 +481,6 @@ class FileService(FileServiceInterface):
 
             now = datetime.utcnow()
 
-            # Store metadata including state restoration fields
             metadata = {
                 "file_id": file_id,
                 "filename": filename,
@@ -508,13 +492,6 @@ class FileService(FileServiceInterface):
                 "path": f"/outputs/{filename}",
                 "type": "output",  # Mark as execution output
             }
-
-            # Add state restoration fields if provided
-            if execution_id:
-                metadata["execution_id"] = execution_id
-            if state_hash:
-                metadata["state_hash"] = state_hash
-                metadata["last_used_at"] = now.isoformat()
 
             await self._store_file_metadata(session_id, file_id, metadata)
 
@@ -822,84 +799,11 @@ class FileService(FileServiceInterface):
             logger.error("Orphan MinIO objects cleanup failed", error=str(e))
             return 0
 
-    async def get_file_state_hash(self, session_id: str, file_id: str) -> Optional[str]:
-        """Get the state hash associated with a file.
-
-        Args:
-            session_id: Session identifier
-            file_id: File identifier
-
-        Returns:
-            SHA256 hash of the state when this file was last used, or None
-        """
-        try:
-            metadata_key = self.get_file_metadata_key(session_id, file_id)
-            state_hash = await self.redis_client.hget(metadata_key, "state_hash")
-            return state_hash
-        except Exception as e:
-            logger.error(
-                "Failed to get file state hash",
-                error=str(e),
-                session_id=session_id,
-                file_id=file_id,
-            )
-            return None
-
-    async def update_file_state_hash(
-        self,
-        session_id: str,
-        file_id: str,
-        state_hash: str,
-        execution_id: Optional[str] = None,
-    ) -> bool:
-        """Update the state hash for a file (called when file is used in execution).
-
-        Args:
-            session_id: Session identifier
-            file_id: File identifier
-            state_hash: New SHA256 hash of the Python state
-            execution_id: Optional ID of the execution that used this file
-
-        Returns:
-            True if update was successful
-        """
-        try:
-            metadata_key = self.get_file_metadata_key(session_id, file_id)
-            now = datetime.utcnow().isoformat()
-
-            # Update multiple fields atomically
-            updates = {
-                "state_hash": state_hash,
-                "last_used_at": now,
-            }
-            if execution_id:
-                updates["execution_id"] = execution_id
-
-            await self.redis_client.hset(metadata_key, mapping=updates)
-
-            logger.debug(
-                "Updated file state hash",
-                session_id=session_id[:12],
-                file_id=file_id,
-                state_hash=state_hash[:12],
-            )
-            return True
-        except Exception as e:
-            logger.error(
-                "Failed to update file state hash",
-                error=str(e),
-                session_id=session_id,
-                file_id=file_id,
-            )
-            return False
-
     async def update_file_content(
         self,
         session_id: str,
         file_id: str,
         content: bytes,
-        state_hash: Optional[str] = None,
-        execution_id: Optional[str] = None,
     ) -> bool:
         """Update the content of an existing file.
 
@@ -910,8 +814,6 @@ class FileService(FileServiceInterface):
             session_id: Session identifier
             file_id: File identifier
             content: New file content as bytes
-            state_hash: Optional SHA256 hash of the Python state
-            execution_id: Optional ID of the execution that modified this file
 
         Returns:
             True if update was successful
@@ -955,15 +857,9 @@ class FileService(FileServiceInterface):
             )
 
             # Update metadata
-            now = datetime.utcnow().isoformat()
             updates = {
                 "size": len(content),
-                "last_used_at": now,
             }
-            if state_hash:
-                updates["state_hash"] = state_hash
-            if execution_id:
-                updates["execution_id"] = execution_id
 
             metadata_key = self.get_file_metadata_key(session_id, file_id)
             await self.redis_client.hset(metadata_key, mapping=updates)

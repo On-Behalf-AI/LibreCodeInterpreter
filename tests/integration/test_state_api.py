@@ -43,19 +43,8 @@ class TestStateApiSurface:
 
         assert response.status_code == 404
 
-    def test_post_state_endpoint_returns_404(self, client, auth_headers):
-        """Binary state uploads are not exposed over HTTP."""
-        response = client.post(
-            "/state/test-session",
-            content=b"\x02fake lz4 compressed data here",
-            headers={**auth_headers, "Content-Type": "application/octet-stream"},
-        )
-
-        assert response.status_code == 404
-
     def test_delete_state_endpoint_returns_404(self, client, auth_headers):
         """State deletion happens through internal services, not public routes."""
         response = client.delete("/state/test-session", headers=auth_headers)
 
         assert response.status_code == 404
-
