@@ -435,6 +435,18 @@ class TestProgrammaticValidation:
         )
         assert response.status_code == 422
 
+    def test_legacy_inline_file_payload_returns_422(self, client, auth_headers):
+        """PTC only accepts referenced CodeEnvFile payloads."""
+        response = client.post(
+            "/exec/programmatic",
+            json={
+                "code": "print('hello')",
+                "files": [{"filename": "test.txt", "content": "data"}],
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
 
 # =============================================================================
 # RESPONSE SCHEMA

@@ -93,7 +93,7 @@ class ProgrammaticService:
             tools: Tool definitions available to the code
             session_id: Session identifier
             timeout: Execution timeout in seconds
-            files: Optional files to mount in sandbox
+            files: Optional referenced prior-session files to mount in sandbox
 
         Returns:
             ProgrammaticExecResponse with status and optional tool_calls
@@ -410,6 +410,17 @@ class ProgrammaticService:
                 # Process may have exited without sending delimiter
                 self._kill_process(proc)
                 self._sandbox_manager.destroy_sandbox(sandbox_info)
+                if time.monotonic() >= execution_deadline:
+                    return ProgrammaticExecResponse(
+                        status="error",
+                        session_id=session_id,
+                        error=(
+                            "Execution timed out after "
+                            f"{execution_timeout_seconds} seconds"
+                        ),
+                        stdout=accumulated_stdout + stdout_buf,
+                        stderr=accumulated_stderr + stderr_buf,
+                    )
                 return ProgrammaticExecResponse(
                     status="error",
                     session_id=session_id,
@@ -549,25 +560,11 @@ class ProgrammaticService:
         sandbox_info: SandboxInfo,
         files: List[PTCFileInput],
     ) -> Optional[str]:
-        """Mount initial files into the sandbox.
-
-        Supports both inline file blobs and LibreChat-style file references.
-        """
+        """Mount referenced prior-session files into the sandbox."""
         for file_info in files:
-            if file_info.session_id and file_info.id:
-                error = await self._mount_referenced_file(sandbox_info, file_info)
-                if error:
-                    return error
-                continue
-
-            if file_info.filename and file_info.content is not None:
-                self._mount_inline_file(sandbox_info, file_info)
-                continue
-
-            return (
-                "Unsupported PTC file payload. Expected either "
-                "{session_id, id, name} or {filename, content}."
-            )
+            error = await self._mount_referenced_file(sandbox_info, file_info)
+            if error:
+                return error
 
         return None
 
@@ -600,7 +597,7 @@ class ProgrammaticService:
                 f"{file_info.session_id}/{file_info.id}"
             )
 
-        filename = self._normalize_mount_filename(stored_file.filename)
+        filename = self._normalize_mount_filename(file_info.name or stored_file.filename)
         self._sandbox_manager.copy_content_to_sandbox(
             sandbox_info,
             content,
@@ -609,34 +606,12 @@ class ProgrammaticService:
         )
         return None
 
-    def _mount_inline_file(
-        self,
-        sandbox_info: SandboxInfo,
-        file_info: PTCFileInput,
-    ) -> None:
-        """Mount a legacy inline file payload into /mnt/data."""
-        filename = self._normalize_mount_filename(file_info.filename)
-        content = file_info.content
-        if isinstance(content, bytes):
-            raw_content = content
-        elif isinstance(content, str):
-            raw_content = content.encode()
-        else:
-            raw_content = json.dumps(content).encode()
-
-        self._sandbox_manager.copy_content_to_sandbox(
-            sandbox_info,
-            raw_content,
-            f"/mnt/data/{filename}",
-            language="py",
-        )
-
     def _normalize_mount_filename(self, filename: Optional[str]) -> str:
         """Collapse any path-like input to a safe basename for /mnt/data."""
         candidate = (filename or "").strip()
         normalized = Path(candidate).name
         if not normalized:
-            raise ValueError("PTC file payload must include a valid filename")
+            raise ValueError("Referenced PTC file input must include a valid name")
         return normalized
 
     def _kill_process(self, proc: asyncio.subprocess.Process) -> None:

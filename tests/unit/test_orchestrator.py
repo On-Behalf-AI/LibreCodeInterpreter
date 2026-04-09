@@ -81,7 +81,6 @@ class TestMountFiles:
         result = await orchestrator._mount_files(ctx)
 
         assert result == []
-        assert ctx.mounted_file_refs is None
 
     @pytest.mark.asyncio
     async def test_mount_files_with_session_id_auto_mounts(
@@ -128,10 +127,6 @@ class TestMountFiles:
         assert result[1]["filename"] == "output.png"
         assert result[1]["session_id"] == "test-session-123"
 
-        # Verify file refs were tracked for state linking
-        assert ctx.mounted_file_refs is not None
-        assert len(ctx.mounted_file_refs) == 2
-
     @pytest.mark.asyncio
     async def test_mount_files_empty_session(self, orchestrator, mock_file_service):
         """When session_id exists but session has no files, should return empty list."""
@@ -147,7 +142,6 @@ class TestMountFiles:
         result = await orchestrator._mount_files(ctx)
 
         assert result == []
-        assert ctx.mounted_file_refs == []
 
     @pytest.mark.asyncio
     async def test_mount_files_explicit_files_takes_precedence(
@@ -227,8 +221,10 @@ class TestAutoMountSessionFiles:
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_auto_mount_tracks_file_refs(self, orchestrator, mock_file_service):
-        """Auto-mount should track file refs for state linking."""
+    async def test_auto_mount_returns_session_files(
+        self, orchestrator, mock_file_service
+    ):
+        """Auto-mount should return session files ready for mounting."""
         mock_file_service.list_files = AsyncMock(
             return_value=[
                 FileInfo(
@@ -249,10 +245,16 @@ class TestAutoMountSessionFiles:
             session_id="test-session-123",
         )
 
-        await orchestrator._auto_mount_session_files(ctx)
+        result = await orchestrator._auto_mount_session_files(ctx)
 
-        assert ctx.mounted_file_refs == [
-            {"session_id": "test-session-123", "file_id": "file-1"},
+        assert result == [
+            {
+                "file_id": "file-1",
+                "filename": "data.csv",
+                "path": "/mnt/data/data.csv",
+                "size": 100,
+                "session_id": "test-session-123",
+            }
         ]
 
 

@@ -8,7 +8,7 @@ import math
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
 from ..models.programmatic import (
     ProgrammaticExecRequest,
@@ -38,13 +38,12 @@ def _timeout_ms_to_seconds(timeout_ms: Optional[int]) -> Optional[int]:
     """Convert the public millisecond timeout contract to internal seconds."""
     if timeout_ms is None:
         return None
-    return max(1, math.ceil(timeout_ms / 1000))
+    return math.ceil(timeout_ms / 1000)
 
 
 @router.post("/exec/programmatic", response_model=ProgrammaticExecResponse)
 async def execute_programmatic(
     request: ProgrammaticExecRequest,
-    http_request: Request,
     session_service: SessionServiceDep,
 ) -> ProgrammaticExecResponse:
     """Execute code with programmatic tool calling support.
@@ -55,7 +54,6 @@ async def execute_programmatic(
 
     Args:
         request: PTC execution request
-        http_request: HTTP request for auth state
         session_service: Session service for session management
 
     Returns:

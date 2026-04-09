@@ -1,15 +1,11 @@
-"""Pytest configuration and shared fixtures."""
-
-import asyncio
+import os
+from datetime import datetime
 from pathlib import Path
-import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import AsyncGenerator, Generator
+
+import pytest
 import redis.asyncio as redis
 from minio import Minio
-from datetime import datetime, timezone
-import os
 
 # Set test environment before importing config
 # These match the docker-compose infrastructure settings
@@ -22,12 +18,9 @@ os.environ.setdefault("MINIO_ACCESS_KEY", "minioadmin")
 os.environ.setdefault("MINIO_SECRET_KEY", "minioadmin")
 os.environ.setdefault("MINIO_SECURE", "false")
 
-from src.config import settings
 from src.services.session import SessionService
 from src.services.execution import CodeExecutionService
 from src.services.file import FileService
-from src.services.auth import AuthenticationService
-from src.models import Session, SessionCreate, SessionStatus
 
 
 @pytest.fixture
@@ -131,33 +124,6 @@ def file_service(mock_minio, mock_redis):
         service = FileService()
         yield service
 
-
-@pytest.fixture
-def auth_service(mock_redis):
-    """Create AuthenticationService instance with mocked Redis."""
-    service = AuthenticationService(redis_client=mock_redis)
-    yield service
-
-
-@pytest.fixture
-def sample_session():
-    """Create a sample session for testing."""
-    return Session(
-        session_id="test-session-123",
-        status=SessionStatus.ACTIVE,
-        created_at=datetime.now(timezone.utc),
-        last_activity=datetime.now(timezone.utc),
-        expires_at=datetime.now(timezone.utc),
-        metadata={"entity_id": "test-entity"},
-    )
-
-
-@pytest.fixture
-def sample_session_create():
-    """Create a sample session creation request."""
-    return SessionCreate(metadata={"entity_id": "test-entity", "user_id": "test-user"})
-
-
 @pytest.fixture
 def mock_settings():
     """Mock settings for testing."""
@@ -185,57 +151,6 @@ def mock_settings():
         )
 
         yield mock_settings
-
-
-@pytest.fixture
-def mock_container_stats():
-    """Mock container statistics."""
-    return {
-        "memory_usage_mb": 128.5,
-        "cpu_usage_percent": 15.2,
-        "network_io": {"rx_bytes": 1024, "tx_bytes": 512},
-    }
-
-
-@pytest.fixture
-def mock_execution_result():
-    """Mock execution result."""
-    return {
-        "exit_code": 0,
-        "stdout": "Hello, World!",
-        "stderr": "",
-        "execution_time_ms": 150,
-        "memory_peak_mb": 64.2,
-    }
-
-
-# Async fixtures for services that need async initialization
-@pytest_asyncio.fixture
-async def async_session_service(mock_redis):
-    """Async fixture for SessionService."""
-    service = SessionService(redis_client=mock_redis)
-    yield service
-    await service.close()
-
-
-@pytest_asyncio.fixture
-async def async_file_service(mock_minio, mock_redis):
-    """Async fixture for FileService."""
-    with patch("src.services.file.Minio", return_value=mock_minio), patch(
-        "src.services.file.redis.Redis", return_value=mock_redis
-    ):
-        service = FileService()
-        yield service
-        await service.close()
-
-
-@pytest_asyncio.fixture
-async def async_auth_service(mock_redis):
-    """Async fixture for AuthenticationService."""
-    service = AuthenticationService(redis_client=mock_redis)
-    yield service
-
-
 # ============================================================================
 # Integration Test Fixtures
 # ============================================================================
@@ -255,21 +170,13 @@ def auth_headers():
     """Provide authentication headers for integration tests."""
     return {"x-api-key": "test-api-key-for-testing-12345"}
 
-
-@pytest.fixture
-def unique_session_id():
-    """Generate unique session ID for test isolation."""
-    import uuid
-
-    return f"test-session-{uuid.uuid4().hex[:8]}"
-
-
 def pytest_collection_modifyitems(config, items):
     """Apply shared markers based on the suite layer."""
     contract_only_files = (
         "tests/integration/test_api_contracts.py",
         "tests/integration/test_librechat_compat.py",
         "tests/integration/test_programmatic_api.py",
+        "tests/integration/test_state_api.py",
     )
     slow_files = (
         "tests/functional/test_client_replay.py",
