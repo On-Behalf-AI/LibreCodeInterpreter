@@ -1,7 +1,7 @@
-"""Integration tests for the Programmatic Tool Calling (PTC) API endpoint.
+"""Contract tests for the Programmatic Tool Calling (PTC) API endpoint.
 
-Tests use TestClient with mocked ProgrammaticService to verify the API
-contract without requiring actual sandbox infrastructure.
+These tests validate request parsing, response shape, and timeout conversion
+with a mocked PTC service. They are not end-to-end PTC execution coverage.
 """
 
 import pytest
