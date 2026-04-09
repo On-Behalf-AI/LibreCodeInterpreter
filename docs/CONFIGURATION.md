@@ -201,7 +201,7 @@ REPL mode keeps a Python interpreter running inside pooled sandboxes with common
 
 ### State Persistence Configuration (Python)
 
-Python sessions can persist variables, functions, and objects across executions using the `session_id` parameter.
+Python `/exec` sessions can persist variables, functions, and objects across executions when a Python session is reused. The most explicit path is sending the prior `session_id`, but the backend can also reuse an existing session through same-user file references or `entity_id`.
 
 | Variable                    | Default | Description                          |
 | --------------------------- | ------- | ------------------------------------ |

@@ -262,6 +262,8 @@ async def config_info():
 
 
 # Include routers (authentication handled by middleware)
+# State persistence is exposed through /exec session continuity only.
+# No public /state router is mounted.
 # Files routes - mount without prefix for LibreChat compatibility
 app.include_router(files.router, tags=["files"])
 

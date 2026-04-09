@@ -49,10 +49,12 @@ async def execute_code(
     This endpoint is compatible with LibreChat's Code Interpreter API.
     It supports 12 programming languages: py, js, ts, go, java, c, cpp, php, rs, r, f90, d
 
-    Python sessions support state persistence - variables and functions defined in
-    one execution are available in subsequent executions within the same session.
-    State is stored in Redis (2 hour TTL) with automatic archival to MinIO for
-    long-term storage (7 day TTL).
+    Python sessions are stateful when a session is reused. Variables and
+    functions defined in one execution are available in subsequent executions
+    within the same session, whether the caller supplies `session_id` directly
+    or the orchestrator reuses a session through same-user file references or
+    `entity_id` continuity. State is stored in Redis (2 hour TTL) with
+    automatic archival to MinIO for long-term storage (7 day TTL).
 
     Returns a streaming response that sends keepalive whitespace before the
     JSON body to prevent client socket timeouts during long operations.

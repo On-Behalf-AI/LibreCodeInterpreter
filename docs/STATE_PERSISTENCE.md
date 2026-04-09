@@ -2,9 +2,13 @@
 
 This document describes the Python state persistence feature, which allows variables, functions, and objects to persist across executions within a session.
 
+State persistence is an internal backend capability. The current API does not expose a public `/state/*` upload/download surface; state is loaded and saved as part of normal `/exec` session continuity.
+
+For Python, `/exec` is stateful whenever the backend reuses the same session. The clearest way to request that is to send the prior `session_id`, but the backend can also reuse a session through same-user file references or `entity_id` continuity.
+
 ## Overview
 
-By default, each code execution starts with a clean Python interpreter. With state persistence enabled, Python sessions can maintain state across multiple API calls, enabling:
+By default, each code execution starts with a clean Python interpreter. With state persistence enabled, Python sessions can maintain state across multiple `/exec` API calls, enabling:
 
 - **Iterative development**: Build up variables and functions across requests
 - **Long-running workflows**: Create data in one call, analyze in subsequent calls
@@ -136,7 +140,7 @@ When disabled:
 
 - Each Python execution starts with a clean namespace
 - No state is saved to Redis or MinIO
-- `session_id` in requests is ignored for state (still used for files)
+- `session_id` in requests is ignored for state (it still scopes files and session continuity)
 
 ---
 

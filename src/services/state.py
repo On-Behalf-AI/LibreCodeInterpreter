@@ -11,9 +11,9 @@ Hybrid storage:
 - Hot storage: Redis with configurable TTL (default 2 hours)
 - Cold storage: MinIO for long-term archival (handled by StateArchivalService)
 
-Wire format vs storage format:
-- Redis storage: Base64-encoded (existing format)
-- Wire transfer: Raw lz4 binary (new /state endpoints)
+Storage format vs helper format:
+- Redis storage: Base64-encoded
+- Raw helper format: lz4-compressed bytes
 - Service handles conversion via get_state_raw() and save_state_raw()
 """
 
@@ -440,7 +440,7 @@ class StateService:
             return None
 
     async def get_state_raw(self, session_id: str) -> Optional[bytes]:
-        """Get state as raw binary bytes (for wire transfer).
+        """Get state as raw binary bytes for internal helpers/tests.
 
         Decodes the base64-encoded state stored in Redis.
 
@@ -468,7 +468,7 @@ class StateService:
         ttl_seconds: Optional[int] = None,
         from_upload: bool = False,
     ) -> Tuple[bool, Optional[str]]:
-        """Save state from raw binary bytes (from wire transfer).
+        """Save state from raw binary bytes for internal helpers/tests.
 
         Encodes the raw bytes to base64 for Redis storage.
 
@@ -544,9 +544,7 @@ class StateService:
             return None
 
     async def has_recent_upload(self, session_id: str) -> bool:
-        """Check if state was recently uploaded by client.
-
-        Used by orchestrator to prioritize client-uploaded state.
+        """Check if state was recently staged for priority loading.
 
         Args:
             session_id: Session identifier

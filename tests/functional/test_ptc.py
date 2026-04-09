@@ -69,6 +69,72 @@ class TestPTCInitialExecution:
         assert data["status"] == "error"
         assert data["error"] is not None
 
+    @pytest.mark.asyncio
+    async def test_ptc_timeout_uses_milliseconds(
+        self, async_client, auth_headers
+    ):
+        """A 1000ms timeout should behave like a 1 second execution budget."""
+        response = await async_client.post(
+            "/exec/programmatic",
+            headers=auth_headers,
+            json={
+                "code": (
+                    "import time\n"
+                    "time.sleep(5)\n"
+                    "print('should not complete')"
+                ),
+                "tools": [],
+                "timeout": 1000,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "error"
+        assert "timed out" in data["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ptc_accepts_referenced_session_files(
+        self, async_client, auth_headers, unique_entity_id
+    ):
+        """LibreChat-style file references should be mounted into /mnt/data."""
+        upload = await async_client.post(
+            "/upload",
+            headers={"x-api-key": auth_headers["x-api-key"]},
+            files={"files": ("report.csv", b"a,b\n1,2\n", "text/csv")},
+            data={"entity_id": unique_entity_id},
+        )
+
+        assert upload.status_code == 200
+        upload_payload = upload.json()
+        session_id = upload_payload["session_id"]
+        file_id = upload_payload["files"][0]["fileId"]
+
+        response = await async_client.post(
+            "/exec/programmatic",
+            headers=auth_headers,
+            json={
+                "code": (
+                    "from pathlib import Path\n"
+                    "print(Path('/mnt/data/report.csv').read_text())"
+                ),
+                "tools": [],
+                "files": [
+                    {
+                        "session_id": session_id,
+                        "id": file_id,
+                        "name": "report.csv",
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert "a,b" in data["stdout"]
+        assert "1,2" in data["stdout"]
+
 
 class TestPTCToolCallFlow:
     """Test the full PTC tool call round-trip: code calls tool, we supply result."""

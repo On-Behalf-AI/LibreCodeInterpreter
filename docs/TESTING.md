@@ -10,17 +10,18 @@ Tests are organized into two main categories:
 tests/
 ├── conftest.py              # Shared fixtures for all tests
 ├── unit/                    # Unit tests (no external dependencies)
-│   ├── test_execution_service.py
+│   ├── test_orchestrator.py
 │   ├── test_session_service.py
+│   ├── test_state_service.py
 │   └── ...
 ├── integration/             # Integration tests (require running API, Redis, MinIO)
 │   ├── test_api_contracts.py
 │   ├── test_librechat_compat.py
 │   ├── test_container_behavior.py
+│   ├── test_file_handling.py
+│   ├── test_programmatic_api.py
 │   ├── test_session_behavior.py
-│   ├── test_session_isolation.py
-│   ├── test_session_state.py
-│   └── test_file_handling.py
+│   └── test_state_api.py
 └── snapshots/               # Snapshot data for tests
 ```
 
@@ -87,10 +88,10 @@ pytest --cov=src tests/
 pytest tests/unit/
 
 # Run a specific test file
-pytest tests/unit/test_execution_service.py
+pytest tests/unit/test_session_service.py
 
 # Run a specific test function
-pytest tests/unit/test_execution_service.py::test_execute_python_code
+pytest tests/unit/test_session_service.py::test_create_session
 ```
 
 ### Running Integration Tests Only
@@ -157,15 +158,24 @@ Tests sandbox lifecycle and execution:
 
 ### Session State Tests
 
-**File:** `tests/integration/test_session_state.py`
+**Files:** `tests/integration/test_session_behavior.py`, `tests/unit/test_state_service.py`
 
 Tests Python state persistence:
 
 - Variable persistence across executions
-- Function persistence
-- NumPy/Pandas object persistence
-- State size limits
-- Session isolation
+- Session reuse and isolation behavior
+- State storage and retrieval helpers
+- State metadata and upload-marker behavior
+
+### State API Surface Tests
+
+**File:** `tests/integration/test_state_api.py`
+
+Guards the current contract that `/state/*` is not a public API:
+
+- No `/state` routes are mounted
+- Direct upload/download/info/delete calls return `404`
+- State persistence remains reachable through `/exec` session continuity instead
 
 ### File Handling Tests
 
