@@ -45,6 +45,30 @@ class PTCToolResult(BaseModel):
     )
 
 
+class PTCFileInput(BaseModel):
+    """File payload for PTC initial execution.
+
+    Supports both:
+    - LibreChat-style file references: {session_id, id, name}
+    - Legacy inline files: {filename, content}
+    """
+
+    id: Optional[str] = Field(default=None, description="File identifier")
+    name: Optional[str] = Field(
+        default=None, description="Filename for a referenced session file"
+    )
+    session_id: Optional[str] = Field(
+        default=None, description="Source session for a referenced file"
+    )
+    filename: Optional[str] = Field(
+        default=None, description="Filename for inline file content"
+    )
+    content: Optional[Any] = Field(
+        default=None,
+        description="Inline file content for non-reference callers",
+    )
+
+
 class ProgrammaticExecRequest(BaseModel):
     """Request model for POST /exec/programmatic.
 
@@ -72,9 +96,12 @@ class ProgrammaticExecRequest(BaseModel):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     timeout: Optional[int] = Field(
-        default=None, description="Execution timeout in seconds"
+        default=None,
+        description="Execution timeout in milliseconds",
+        ge=1000,
+        le=300000,
     )
-    files: List[Dict[str, Any]] = Field(
+    files: List[PTCFileInput] = Field(
         default_factory=list, description="Files to mount in sandbox"
     )
 

@@ -459,7 +459,7 @@ class ExecutionOrchestrator:
         """Load previous state from Redis (or MinIO fallback) for Python sessions.
 
         Priority order:
-        1. Recently uploaded state via POST /state (client-side cache restore)
+        1. Recently staged state via internal helpers/upload marker
         2. Redis hot storage (within 2-hour TTL)
         3. MinIO cold storage (archived state)
         """
@@ -478,14 +478,14 @@ class ExecutionOrchestrator:
             return
 
         try:
-            # Check if client recently uploaded state (highest priority)
+            # Check if state was recently staged for priority loading.
             if await self.state_service.has_recent_upload(ctx.session_id):
                 ctx.initial_state = await self.state_service.get_state(ctx.session_id)
                 if ctx.initial_state:
                     # Clear marker so subsequent executions use normal flow
                     await self.state_service.clear_upload_marker(ctx.session_id)
                     logger.debug(
-                        "Using client-uploaded state",
+                        "Using recently staged state",
                         session_id=ctx.session_id[:12],
                         state_size=len(ctx.initial_state),
                     )
