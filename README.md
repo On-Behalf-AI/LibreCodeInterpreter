@@ -2,13 +2,13 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![CI Status](https://github.com/usnavy13/LibreCodeInterpreter/actions/workflows/lint.yml/badge.svg)](https://github.com/usnavy13/LibreCodeInterpreter/actions/workflows/lint.yml)
+[![CI Status](https://github.com/usnavy13/LibreCodeInterpreter/actions/workflows/ci.yml/badge.svg)](https://github.com/usnavy13/LibreCodeInterpreter/actions/workflows/ci.yml)
 
 A secure, open-source code interpreter API that provides sandboxed code execution using nsjail for isolation. Compatible with LibreChat's Code Interpreter API.
 
 ## Quick Start
 
-Get up and running in minutes by building the execution environment.
+Most users should run the published Docker image from GHCR. You do not need to build the application locally, and the published image supports both `amd64` and `arm64`.
 
 1. **Clone the repository**
 
@@ -21,25 +21,56 @@ Get up and running in minutes by building the execution environment.
 
    ```bash
    cp .env.example .env
-   # The default settings work out-of-the-box for local development
+   # The default settings work out-of-the-box for local usage
    ```
 
-3. **Build the unified Docker image**
+3. **Pull and start the published stack**
 
    ```bash
-   docker build -t code-interpreter:nsjail .
+   docker compose -f docker-compose.prod.yml pull
+   docker compose -f docker-compose.prod.yml up -d
    ```
 
-   This builds a single image containing all 13 language runtimes and nsjail for sandboxed execution.
-
-4. **Start the API**
+   By default this uses `ghcr.io/usnavy13/librecodeinterpreter:main`. To pin a different published tag:
 
    ```bash
-   docker compose up -d
+   API_IMAGE=ghcr.io/usnavy13/librecodeinterpreter:<tag> \
+   docker compose -f docker-compose.prod.yml up -d
+   ```
+
+4. **Verify the API**
+
+   ```bash
+   curl http://localhost:8000/health
    ```
 
 The API will be available at `http://localhost:8000`.
 Visit `http://localhost:8000/docs` for the interactive API documentation.
+
+### Common Consumer Commands
+
+```bash
+# View API logs
+docker compose -f docker-compose.prod.yml logs -f api
+
+# Stop the stack
+docker compose -f docker-compose.prod.yml down
+
+# Update to the latest published image
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+## Build From Source
+
+If you are developing locally or need to customize the image, use the source-backed workflow instead:
+
+```bash
+docker build --target app -t code-interpreter:nsjail .
+docker compose up -d
+```
+
+The Dockerfile is split into `runtime-core`, `runtime-r`, and `app` targets so CI can reuse published runtime layers and avoid rebuilding the heavyweight R stage on every app change.
 
 ## Admin Dashboard
 
@@ -128,6 +159,17 @@ pytest tests/unit/
 ```
 
 For comprehensive testing details, see [TESTING.md](docs/TESTING.md).
+
+## CI/CD
+
+GitHub Actions is split into four workflows:
+
+- `ci.yml`: PR validation and required checks
+- `runtime.yml`: publish `runtime-core` and `runtime-r` cacheable base images
+- `release.yml`: publish multi-arch app images for `main`, `dev`, and release tags
+- `nightly.yml`: rebuild heavy runtime layers and run slow/full live validation
+
+Published images now use native `amd64` and `arm64` builds instead of a single emulated multi-arch build, and the app image can reuse the previously published `runtime-r` layer when runtime inputs have not changed.
 
 ## Security
 
