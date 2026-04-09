@@ -597,7 +597,9 @@ class ProgrammaticService:
                 f"{file_info.session_id}/{file_info.id}"
             )
 
-        filename = self._normalize_mount_filename(file_info.name or stored_file.filename)
+        filename = self._normalize_mount_filename(
+            file_info.name or stored_file.filename
+        )
         self._sandbox_manager.copy_content_to_sandbox(
             sandbox_info,
             content,

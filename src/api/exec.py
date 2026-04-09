@@ -85,6 +85,11 @@ async def execute_code(
         state_archival_service=state_archival_service,
     )
 
+    # Streaming responses send headers before iterating the body. Validate
+    # synchronously first so handled request errors still return proper HTTP codes.
+    if not request.code or not request.code.strip():
+        raise ValidationError(message="Code cannot be empty")
+
     async def _stream_response():
         """Execute code and stream the response with keepalive whitespace.
 

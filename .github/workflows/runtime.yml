@@ -18,10 +18,10 @@ permissions:
   packages: write
 
 env:
-  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
-  RUNTIME_CORE_IMAGE: ghcr.io/${{ github.repository }}/runtime-core
-  RUNTIME_R_IMAGE: ghcr.io/${{ github.repository }}/runtime-r
-  BUILDCACHE_IMAGE: ghcr.io/${{ github.repository }}/buildcache
+  REGISTRY_IMAGE: ghcr.io/usnavy13/librecodeinterpreter
+  RUNTIME_CORE_IMAGE: ghcr.io/usnavy13/librecodeinterpreter/runtime-core
+  RUNTIME_R_IMAGE: ghcr.io/usnavy13/librecodeinterpreter/runtime-r
+  BUILDCACHE_IMAGE: ghcr.io/usnavy13/librecodeinterpreter/buildcache
 
 jobs:
   prepare:
