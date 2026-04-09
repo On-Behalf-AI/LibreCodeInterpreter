@@ -108,6 +108,16 @@ class FileService(FileServiceInterface):
         links_key = self._get_file_links_key(session_id, file_id)
         return bool(await self.redis_client.smembers(links_key))
 
+    async def _delete_object(self, object_key: str) -> None:
+        """Delete a backing object from MinIO."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            self.minio_client.remove_object,
+            self.bucket_name,
+            object_key,
+        )
+
     async def _find_linked_file(
         self, target_session_id: str, source_session_id: str, source_file_id: str
     ) -> Optional[str]:
@@ -173,7 +183,7 @@ class FileService(FileServiceInterface):
             # Convert string values back to appropriate types
             if "size" in metadata:
                 metadata["size"] = int(metadata["size"])
-            if "created_at" in metadata:
+            if "created_at" in metadata and isinstance(metadata["created_at"], str):
                 metadata["created_at"] = datetime.fromisoformat(metadata["created_at"])
 
             return metadata
@@ -485,6 +495,31 @@ class FileService(FileServiceInterface):
                 session_id=session_id,
                 file_id=file_id,
             )
+
+            source_metadata = await self.get_file_metadata(
+                metadata["source_session_id"],
+                metadata["source_file_id"],
+            )
+            if source_metadata is None and not await self._has_link_references(
+                metadata["source_session_id"],
+                metadata["source_file_id"],
+            ):
+                try:
+                    await self._delete_object(metadata["object_key"])
+                    logger.debug(
+                        "Deleted orphaned shared object after final alias cleanup",
+                        source_session_id=metadata["source_session_id"],
+                        source_file_id=metadata["source_file_id"],
+                        object_key=metadata["object_key"],
+                    )
+                except S3Error as e:
+                    logger.warning(
+                        "Failed to delete orphaned shared object",
+                        source_session_id=metadata["source_session_id"],
+                        source_file_id=metadata["source_file_id"],
+                        object_key=metadata["object_key"],
+                        error=str(e),
+                    )
             return True
 
         if await self._has_link_references(session_id, file_id):
@@ -500,10 +535,7 @@ class FileService(FileServiceInterface):
 
         try:
             # Delete from MinIO
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, self.minio_client.remove_object, self.bucket_name, object_key
-            )
+            await self._delete_object(object_key)
 
             # Delete metadata from Redis
             await self._delete_file_metadata(session_id, file_id)
