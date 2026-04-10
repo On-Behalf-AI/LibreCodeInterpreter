@@ -1,5 +1,6 @@
 """Integration tests for the /exec endpoint."""
 
+import asyncio
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -8,7 +9,13 @@ import time
 from datetime import datetime, timezone, timedelta
 
 from src.main import app
-from src.models import CodeExecution, ExecutionStatus, ExecutionOutput, OutputType
+from src.models import (
+    CodeExecution,
+    ExecutionStatus,
+    ExecutionOutput,
+    OutputType,
+    ServiceUnavailableError,
+)
 
 
 @pytest.fixture
@@ -85,18 +92,47 @@ def mock_file_service():
 
 
 @pytest.fixture(autouse=True)
-def mock_dependencies(mock_session_service, mock_execution_service, mock_file_service):
+def mock_state_service():
+    """Mock state service for testing."""
+    service = AsyncMock()
+    service.get_state.return_value = None
+    return service
+
+
+@pytest.fixture
+def mock_state_archival_service():
+    """Mock state archival service for testing."""
+    service = AsyncMock()
+    service.restore_state.return_value = None
+    service.archive_state.return_value = True
+    return service
+
+
+@pytest.fixture(autouse=True)
+def mock_dependencies(
+    mock_session_service,
+    mock_execution_service,
+    mock_file_service,
+    mock_state_service,
+    mock_state_archival_service,
+):
     """Mock all dependencies for testing."""
     from src.dependencies.services import (
         get_session_service,
         get_execution_service,
         get_file_service,
+        get_state_service,
+        get_state_archival_service,
     )
 
     # Override the dependencies in the FastAPI app
     app.dependency_overrides[get_session_service] = lambda: mock_session_service
     app.dependency_overrides[get_execution_service] = lambda: mock_execution_service
     app.dependency_overrides[get_file_service] = lambda: mock_file_service
+    app.dependency_overrides[get_state_service] = lambda: mock_state_service
+    app.dependency_overrides[get_state_archival_service] = (
+        lambda: mock_state_archival_service
+    )
 
     yield
 
@@ -380,6 +416,33 @@ class TestExecEndpoint:
         # 503 Service Unavailable for backend service errors
         assert response.status_code == 503
         assert "error" in response.json()
+
+    def test_exec_delayed_service_error_after_stream_start(
+        self, client, auth_headers
+    ):
+        """Delayed failures should return a JSON error payload, not crash the stream."""
+
+        async def _delayed_failure(*args, **kwargs):
+            await asyncio.sleep(3.2)
+            raise ServiceUnavailableError(
+                service="Code Execution",
+                message="Delayed backend failure",
+            )
+
+        with patch(
+            "src.services.orchestrator.ExecutionOrchestrator.execute",
+            side_effect=_delayed_failure,
+        ):
+            response = client.post(
+                "/exec",
+                json={"code": "print('Hello')", "lang": "py"},
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        response_data = json.loads(response.text.lstrip())
+        assert response_data["error_type"] == "service_unavailable"
+        assert "Delayed backend failure" in response_data["error"]
 
     def test_exec_response_format_compatibility(
         self, client, auth_headers, mock_execution_service

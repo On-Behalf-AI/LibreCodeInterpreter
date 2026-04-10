@@ -45,6 +45,18 @@ class PTCToolResult(BaseModel):
     )
 
 
+class PTCFileInput(BaseModel):
+    """File payload for PTC initial execution.
+
+    Matches the LibreChat/librechat-agents CodeEnvFile shape:
+    {session_id, id, name}
+    """
+
+    id: str = Field(..., description="File identifier")
+    name: str = Field(..., description="Original filename for the referenced file")
+    session_id: str = Field(..., description="Source session for a referenced file")
+
+
 class ProgrammaticExecRequest(BaseModel):
     """Request model for POST /exec/programmatic.
 
@@ -72,10 +84,14 @@ class ProgrammaticExecRequest(BaseModel):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     timeout: Optional[int] = Field(
-        default=None, description="Execution timeout in seconds"
+        default=None,
+        description="Execution timeout in milliseconds",
+        ge=1000,
+        le=300000,
     )
-    files: List[Dict[str, Any]] = Field(
-        default_factory=list, description="Files to mount in sandbox"
+    files: List[PTCFileInput] = Field(
+        default_factory=list,
+        description="Referenced prior-session files to mount in the sandbox",
     )
 
     # Continuation fields

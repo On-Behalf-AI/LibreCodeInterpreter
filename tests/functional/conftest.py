@@ -22,7 +22,9 @@ import pytest_asyncio
 
 # Configuration from environment
 API_BASE = os.environ.get("API_BASE", "http://localhost:8000")
-API_KEY = os.environ.get("API_KEY", "test-api-key-for-development-only")
+API_KEY = os.environ.get(
+    "API_KEY", "your-secure-api-key-here-change-this-in-production"
+)
 API_TIMEOUT = int(os.environ.get("API_TIMEOUT", "60"))
 
 

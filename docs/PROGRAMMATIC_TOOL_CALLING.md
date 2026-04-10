@@ -59,7 +59,7 @@ interface ProgrammaticExecutionRequest {
   tools: LCTool[]; // Filtered tool definitions
   session_id?: string; // Optional: for file persistence
   timeout?: number; // 1000-300000ms (default: 60000)
-  files?: CodeEnvFile[]; // Optional: files from previous session
+  files?: CodeEnvFile[]; // Optional: initial sandbox files
 }
 
 interface LCTool {
@@ -74,6 +74,9 @@ interface CodeEnvFile {
   session_id: string; // Source session
 }
 ```
+
+The public timeout contract is milliseconds. The backend converts that value to
+seconds internally before invoking the sandbox executor.
 
 ### Response - Tool Call Required
 
@@ -230,6 +233,8 @@ The Python execution environment must:
 2. **Inject tool stubs** - Tools become async functions that trigger pause
 3. **Capture stdout/stderr** - Buffer output across round-trips
 4. **Handle imports** - Pre-import common libraries
+5. **Resolve `CodeEnvFile` references server-side** - Prior-session files must be
+   fetched by `{ session_id, id, name }` and mounted into `/mnt/data`
 
 ### 3. Sandbox Lifecycle
 
@@ -239,6 +244,7 @@ Unlike `/exec`, sandboxes for programmatic execution must:
 - Have **longer TTL** (match request timeout, up to 5 minutes)
 - Be **cleaned up** on completion, error, or timeout
 - Support **session file access** at `/mnt/data/`
+- Accept only LibreChat `CodeEnvFile` references for prior-session files
 
 ### 4. Round-Trip Limits
 

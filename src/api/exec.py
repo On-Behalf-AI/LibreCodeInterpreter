@@ -15,7 +15,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from ..models import ExecRequest, ExecResponse
-from ..models.errors import ErrorResponse, ValidationError, ServiceUnavailableError
+from ..models.errors import (
+    CodeInterpreterException,
+    ErrorResponse,
+    ErrorType,
+    ValidationError,
+    ServiceUnavailableError,
+)
 from ..services.orchestrator import ExecutionOrchestrator
 from ..dependencies.services import (
     SessionServiceDep,
@@ -49,10 +55,12 @@ async def execute_code(
     This endpoint is compatible with LibreChat's Code Interpreter API.
     It supports 12 programming languages: py, js, ts, go, java, c, cpp, php, rs, r, f90, d
 
-    Python sessions support state persistence - variables and functions defined in
-    one execution are available in subsequent executions within the same session.
-    State is stored in Redis (2 hour TTL) with automatic archival to MinIO for
-    long-term storage (7 day TTL).
+    Python sessions are stateful when a session is reused. Variables and
+    functions defined in one execution are available in subsequent executions
+    within the same session, whether the caller supplies `session_id` directly
+    or the orchestrator reuses a session through same-user file references or
+    `entity_id` continuity. State is stored in Redis (2 hour TTL) with
+    automatic archival to MinIO for long-term storage (7 day TTL).
 
     Returns a streaming response that sends keepalive whitespace before the
     JSON body to prevent client socket timeouts during long operations.
@@ -83,6 +91,40 @@ async def execute_code(
         state_archival_service=state_archival_service,
     )
 
+    async def _execute() -> ExecResponse:
+        return await orchestrator.execute(
+            request,
+            request_id,
+            api_key_hash=api_key_hash,
+            is_env_key=is_env_key,
+        )
+
+    execution_task = asyncio.create_task(_execute())
+
+    try:
+        response = await asyncio.wait_for(
+            asyncio.shield(execution_task), timeout=_KEEPALIVE_INTERVAL
+        )
+        logger.info(
+            "Code execution completed",
+            request_id=request_id,
+            session_id=response.session_id,
+        )
+        return response
+    except asyncio.TimeoutError:
+        if execution_task.done():
+            response = await execution_task
+            logger.info(
+                "Code execution completed",
+                request_id=request_id,
+                session_id=response.session_id,
+            )
+            return response
+        # Fall through to streamed keepalives for genuinely long-running work.
+        pass
+    except (ValidationError, ServiceUnavailableError):
+        raise
+
     async def _stream_response():
         """Execute code and stream the response with keepalive whitespace.
 
@@ -91,54 +133,43 @@ async def execute_code(
         whitespace is ignored by JSON parsers, so this is transparent
         to clients.
         """
-        result_holder = {}
-        error_holder = {}
-
-        async def _run():
-            try:
-                result_holder["response"] = await orchestrator.execute(
-                    request,
-                    request_id,
-                    api_key_hash=api_key_hash,
-                    is_env_key=is_env_key,
-                )
-            except Exception as e:
-                error_holder["error"] = e
-
-        task = asyncio.create_task(_run())
+        # The endpoint already spent one interval deciding whether to switch to
+        # streaming. Emit a first keepalive immediately so long-running
+        # requests stay under client-side socket timeout thresholds.
+        if not execution_task.done():
+            yield b" "
 
         # Send keepalive spaces while execution is running
-        while not task.done():
+        while not execution_task.done():
             try:
                 await asyncio.wait_for(
-                    asyncio.shield(task), timeout=_KEEPALIVE_INTERVAL
+                    asyncio.shield(execution_task), timeout=_KEEPALIVE_INTERVAL
                 )
             except asyncio.TimeoutError:
                 # Execution still running — send keepalive space
-                yield b" "
+                if not execution_task.done():
+                    yield b" "
             except Exception:
-                # Task raised an exception — will be handled below
+                # Task raised an exception — it will be handled below.
                 break
 
         # Ensure the task is complete
-        if not task.done():
-            await task
-
-        # Re-raise validation/service errors so FastAPI exception handlers
-        # can return proper HTTP status codes (400, 503, etc.)
-        if "error" in error_holder:
-            err = error_holder["error"]
-            if isinstance(err, (ValidationError, ServiceUnavailableError)):
-                raise err
+        try:
+            response = await execution_task
+        except Exception as err:
+            # Once the streaming response has started, surface failures as a JSON
+            # error payload instead of raising after headers have been sent.
+            error_type = ErrorType.INTERNAL_SERVER
+            if isinstance(err, CodeInterpreterException):
+                error_type = err.error_type
             error_resp = ErrorResponse(
                 error=str(err),
-                error_type="execution",
+                error_type=error_type,
             )
             yield error_resp.model_dump_json().encode()
             return
 
         # Send the JSON response
-        response = result_holder["response"]
         logger.info(
             "Code execution completed",
             request_id=request_id,

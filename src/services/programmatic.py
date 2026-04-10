@@ -6,24 +6,28 @@ to request external tool calls and resume with results.
 
 import asyncio
 import json
+import math
 import os
 import re
 import shlex
 import signal
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import structlog
 
 from ..config import settings
 from ..models.programmatic import (
+    PTCFileInput,
     PTCToolCall,
     PTCToolDefinition,
     PTCToolResult,
     ProgrammaticExecResponse,
 )
+from .interfaces import FileServiceInterface
 from .sandbox.manager import SandboxManager
 from .sandbox.nsjail import NsjailConfig, SandboxInfo
 
@@ -50,6 +54,8 @@ class PausedContext:
     timeout_handle: Optional[asyncio.TimerHandle] = None
     accumulated_stdout: str = ""
     accumulated_stderr: str = ""
+    execution_deadline: float = 0.0
+    execution_timeout_seconds: int = 0
 
 
 class ProgrammaticService:
@@ -59,10 +65,15 @@ class ProgrammaticService:
     manages the request/response protocol for tool calls.
     """
 
-    def __init__(self, sandbox_manager: Optional[SandboxManager] = None):
+    def __init__(
+        self,
+        sandbox_manager: Optional[SandboxManager] = None,
+        file_service: Optional[FileServiceInterface] = None,
+    ):
         self._sandbox_manager = sandbox_manager or SandboxManager()
         self._nsjail_config = NsjailConfig()
         self._paused_contexts: Dict[str, PausedContext] = {}
+        self._file_service = file_service
 
     async def start_execution(
         self,
@@ -70,7 +81,7 @@ class ProgrammaticService:
         tools: List[PTCToolDefinition],
         session_id: str,
         timeout: Optional[int] = None,
-        files: Optional[List[Dict[str, Any]]] = None,
+        files: Optional[List[PTCFileInput]] = None,
     ) -> ProgrammaticExecResponse:
         """Start a new PTC execution.
 
@@ -82,12 +93,13 @@ class ProgrammaticService:
             tools: Tool definitions available to the code
             session_id: Session identifier
             timeout: Execution timeout in seconds
-            files: Optional files to mount in sandbox
+            files: Optional referenced prior-session files to mount in sandbox
 
         Returns:
             ProgrammaticExecResponse with status and optional tool_calls
         """
         execution_timeout = timeout or settings.max_execution_time
+        execution_deadline = time.monotonic() + execution_timeout
 
         # Create sandbox
         sandbox_info = self._sandbox_manager.create_sandbox(
@@ -121,16 +133,17 @@ class ProgrammaticService:
 
             # Mount any provided files
             if files:
-                for file_info in files:
-                    filename = file_info.get("filename", "")
-                    content = file_info.get("content", b"")
-                    if filename and content:
-                        self._sandbox_manager.copy_content_to_sandbox(
-                            sandbox_info,
-                            content if isinstance(content, bytes) else content.encode(),
-                            f"/mnt/data/{filename}",
-                            language="py",
-                        )
+                file_error = await self._mount_requested_files(
+                    sandbox_info=sandbox_info,
+                    files=files,
+                )
+                if file_error:
+                    self._sandbox_manager.destroy_sandbox(sandbox_info)
+                    return ProgrammaticExecResponse(
+                        status="error",
+                        session_id=session_id,
+                        error=file_error,
+                    )
 
             # Build nsjail command - wrap in /bin/sh -c like SandboxExecutor
             env = self._sandbox_manager.executor._build_sanitized_env("py")
@@ -200,6 +213,8 @@ class ProgrammaticService:
                 sandbox_info=sandbox_info,
                 session_id=session_id,
                 timeout=execution_timeout,
+                execution_deadline=execution_deadline,
+                execution_timeout_seconds=execution_timeout,
             )
 
         except Exception as e:
@@ -252,6 +267,23 @@ class ProgrammaticService:
                 error=f"Maximum round trips ({PTC_MAX_ROUND_TRIPS}) exceeded",
             )
 
+        remaining_timeout = max(
+            0,
+            math.ceil(ctx.execution_deadline - time.monotonic()),
+        )
+        if remaining_timeout <= 0:
+            await self._cleanup_paused_context(continuation_token)
+            return ProgrammaticExecResponse(
+                status="error",
+                session_id=ctx.session_id,
+                error=(
+                    "Execution timed out after "
+                    f"{ctx.execution_timeout_seconds} seconds"
+                ),
+                stdout=ctx.accumulated_stdout,
+                stderr=ctx.accumulated_stderr,
+            )
+
         try:
             # Send tool results to the subprocess
             results_payload = {
@@ -279,7 +311,9 @@ class ProgrammaticService:
                 proc=ctx.process,
                 sandbox_info=ctx.sandbox_info,
                 session_id=ctx.session_id,
-                timeout=settings.max_execution_time,
+                timeout=max(1, remaining_timeout),
+                execution_deadline=ctx.execution_deadline,
+                execution_timeout_seconds=ctx.execution_timeout_seconds,
                 accumulated_stdout=ctx.accumulated_stdout,
                 accumulated_stderr=ctx.accumulated_stderr,
                 round_trip_count=ctx.round_trip_count,
@@ -304,6 +338,8 @@ class ProgrammaticService:
         sandbox_info: SandboxInfo,
         session_id: str,
         timeout: int,
+        execution_deadline: float,
+        execution_timeout_seconds: int,
         accumulated_stdout: str = "",
         accumulated_stderr: str = "",
         round_trip_count: int = 0,
@@ -315,6 +351,8 @@ class ProgrammaticService:
             sandbox_info: Sandbox info for cleanup
             session_id: Session identifier
             timeout: Timeout in seconds
+            execution_deadline: Monotonic deadline for total execution
+            execution_timeout_seconds: Total allowed execution time
             accumulated_stdout: Previously accumulated stdout
             accumulated_stderr: Previously accumulated stderr
             round_trip_count: Current round trip count
@@ -347,7 +385,10 @@ class ProgrammaticService:
                 return ProgrammaticExecResponse(
                     status="error",
                     session_id=session_id,
-                    error=f"Execution timed out after {timeout} seconds",
+                    error=(
+                        "Execution timed out after "
+                        f"{execution_timeout_seconds} seconds"
+                    ),
                     stdout=accumulated_stdout,
                     stderr=accumulated_stderr,
                 )
@@ -369,6 +410,17 @@ class ProgrammaticService:
                 # Process may have exited without sending delimiter
                 self._kill_process(proc)
                 self._sandbox_manager.destroy_sandbox(sandbox_info)
+                if time.monotonic() >= execution_deadline:
+                    return ProgrammaticExecResponse(
+                        status="error",
+                        session_id=session_id,
+                        error=(
+                            "Execution timed out after "
+                            f"{execution_timeout_seconds} seconds"
+                        ),
+                        stdout=accumulated_stdout + stdout_buf,
+                        stderr=accumulated_stderr + stderr_buf,
+                    )
                 return ProgrammaticExecResponse(
                     status="error",
                     session_id=session_id,
@@ -423,6 +475,8 @@ class ProgrammaticService:
                     round_trip_count=round_trip_count,
                     accumulated_stdout=total_stdout,
                     accumulated_stderr=total_stderr,
+                    execution_deadline=execution_deadline,
+                    execution_timeout_seconds=execution_timeout_seconds,
                 )
 
                 # Set timeout for cleanup
@@ -500,6 +554,67 @@ class ProgrammaticService:
                 stdout=accumulated_stdout,
                 stderr=accumulated_stderr,
             )
+
+    async def _mount_requested_files(
+        self,
+        sandbox_info: SandboxInfo,
+        files: List[PTCFileInput],
+    ) -> Optional[str]:
+        """Mount referenced prior-session files into the sandbox."""
+        for file_info in files:
+            error = await self._mount_referenced_file(sandbox_info, file_info)
+            if error:
+                return error
+
+        return None
+
+    async def _mount_referenced_file(
+        self,
+        sandbox_info: SandboxInfo,
+        file_info: PTCFileInput,
+    ) -> Optional[str]:
+        """Resolve a stored file reference and mount it into /mnt/data."""
+        if self._file_service is None:
+            return "PTC file references are not available: file service not configured"
+
+        stored_file = await self._file_service.get_file_info(
+            file_info.session_id,
+            file_info.id,
+        )
+        if stored_file is None:
+            return (
+                "Referenced PTC file metadata could not be loaded: "
+                f"{file_info.session_id}/{file_info.id}"
+            )
+
+        content = await self._file_service.get_file_content(
+            file_info.session_id,
+            file_info.id,
+        )
+        if content is None:
+            return (
+                "Referenced PTC file could not be loaded: "
+                f"{file_info.session_id}/{file_info.id}"
+            )
+
+        filename = self._normalize_mount_filename(
+            file_info.name or stored_file.filename
+        )
+        self._sandbox_manager.copy_content_to_sandbox(
+            sandbox_info,
+            content,
+            f"/mnt/data/{filename}",
+            language="py",
+        )
+        return None
+
+    def _normalize_mount_filename(self, filename: Optional[str]) -> str:
+        """Collapse any path-like input to a safe basename for /mnt/data."""
+        candidate = (filename or "").strip()
+        normalized = Path(candidate).name
+        if not normalized:
+            raise ValueError("Referenced PTC file input must include a valid name")
+        return normalized
 
     def _kill_process(self, proc: asyncio.subprocess.Process) -> None:
         """Kill a subprocess and its process group."""

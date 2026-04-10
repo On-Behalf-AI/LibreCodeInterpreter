@@ -1,7 +1,7 @@
-"""Integration tests for the Programmatic Tool Calling (PTC) API endpoint.
+"""Contract tests for the Programmatic Tool Calling (PTC) API endpoint.
 
-Tests use TestClient with mocked ProgrammaticService to verify the API
-contract without requiring actual sandbox infrastructure.
+These tests validate request parsing, response shape, and timeout conversion
+with a mocked PTC service. They are not end-to-end PTC execution coverage.
 """
 
 import pytest
@@ -127,6 +127,7 @@ class TestProgrammaticInitialExecution:
         assert data["status"] == "completed"
         assert data["session_id"] == "ptc-session-123"
         assert data["stdout"] == "Hello from PTC\n"
+        assert mock_service.start_execution.await_args.kwargs["timeout"] is None
 
     @patch("src.api.programmatic._get_ptc_service")
     def test_initial_request_returns_tool_calls(
@@ -211,6 +212,86 @@ class TestProgrammaticInitialExecution:
         assert response.status_code == 200
         # Should not have created a new session
         mock_session_svc.create_session.assert_not_called()
+
+    @patch("src.api.programmatic._get_ptc_service")
+    def test_initial_request_converts_timeout_ms_to_seconds(
+        self,
+        mock_get_service,
+        client,
+        auth_headers,
+        mock_session,
+        mock_ptc_completed_response,
+    ):
+        """API should convert the public millisecond timeout contract to seconds."""
+        mock_service = AsyncMock()
+        mock_service.start_execution.return_value = mock_ptc_completed_response
+        mock_get_service.return_value = mock_service
+
+        from src.dependencies.services import get_session_service
+
+        mock_session_svc = AsyncMock()
+        mock_session_svc.create_session.return_value = mock_session
+        app.dependency_overrides[get_session_service] = lambda: mock_session_svc
+
+        try:
+            response = client.post(
+                "/exec/programmatic",
+                json={
+                    "code": "print('hello')",
+                    "timeout": 60000,
+                },
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        assert mock_service.start_execution.await_args.kwargs["timeout"] == 60
+
+    @patch("src.api.programmatic._get_ptc_service")
+    def test_initial_request_accepts_librechat_file_refs(
+        self,
+        mock_get_service,
+        client,
+        auth_headers,
+        mock_session,
+        mock_ptc_completed_response,
+    ):
+        """API should parse the CodeEnvFile shape used by LibreChat agents."""
+        mock_service = AsyncMock()
+        mock_service.start_execution.return_value = mock_ptc_completed_response
+        mock_get_service.return_value = mock_service
+
+        from src.dependencies.services import get_session_service
+
+        mock_session_svc = AsyncMock()
+        mock_session_svc.create_session.return_value = mock_session
+        app.dependency_overrides[get_session_service] = lambda: mock_session_svc
+
+        try:
+            response = client.post(
+                "/exec/programmatic",
+                json={
+                    "code": "print('hello')",
+                    "files": [
+                        {
+                            "session_id": "upload-session",
+                            "id": "file-123",
+                            "name": "report.csv",
+                        }
+                    ],
+                },
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        forwarded_files = mock_service.start_execution.await_args.kwargs["files"]
+        assert len(forwarded_files) == 1
+        assert forwarded_files[0].session_id == "upload-session"
+        assert forwarded_files[0].id == "file-123"
+        assert forwarded_files[0].name == "report.csv"
 
 
 # =============================================================================
@@ -342,6 +423,27 @@ class TestProgrammaticValidation:
             "/exec/programmatic",
             content="not-json",
             headers={**auth_headers, "content-type": "application/json"},
+        )
+        assert response.status_code == 422
+
+    def test_timeout_below_minimum_returns_422(self, client, auth_headers):
+        """The public timeout contract is milliseconds with a 1s minimum."""
+        response = client.post(
+            "/exec/programmatic",
+            json={"code": "print('hello')", "timeout": 999},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+    def test_legacy_inline_file_payload_returns_422(self, client, auth_headers):
+        """PTC only accepts referenced CodeEnvFile payloads."""
+        response = client.post(
+            "/exec/programmatic",
+            json={
+                "code": "print('hello')",
+                "files": [{"filename": "test.txt", "content": "data"}],
+            },
+            headers=auth_headers,
         )
         assert response.status_code == 422
 

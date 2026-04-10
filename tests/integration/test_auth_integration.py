@@ -21,21 +21,35 @@ def mock_services():
         get_session_service,
         get_execution_service,
         get_file_service,
+        get_state_service,
+        get_state_archival_service,
     )
 
     mock_session_service = AsyncMock()
     mock_execution_service = AsyncMock()
     mock_file_service = AsyncMock()
+    mock_state_service = AsyncMock()
+    mock_state_archival_service = AsyncMock()
+
+    mock_state_service.get_state.return_value = None
+    mock_state_archival_service.restore_state.return_value = None
+    mock_state_archival_service.archive_state.return_value = True
 
     # Override the dependencies in the FastAPI app
     app.dependency_overrides[get_session_service] = lambda: mock_session_service
     app.dependency_overrides[get_execution_service] = lambda: mock_execution_service
     app.dependency_overrides[get_file_service] = lambda: mock_file_service
+    app.dependency_overrides[get_state_service] = lambda: mock_state_service
+    app.dependency_overrides[get_state_archival_service] = (
+        lambda: mock_state_archival_service
+    )
 
     yield {
         "session": mock_session_service,
         "execution": mock_execution_service,
         "file": mock_file_service,
+        "state": mock_state_service,
+        "state_archival": mock_state_archival_service,
     }
 
     # Clean up after test
@@ -217,6 +231,11 @@ class TestAPIKeyAuthentication:
 class TestAuthenticationEdgeCases:
     """Test edge cases in authentication."""
 
+    @staticmethod
+    def _protected_authenticated_request(client, headers):
+        """Hit a protected endpoint that exercises auth without exec mocks."""
+        return client.get("/health/detailed", headers=headers)
+
     def test_auth_with_special_characters_in_key(self, client, mock_services):
         """Test authentication with special characters in API key."""
         special_key = "test-key-with-special-chars!@#$%^&*()"
@@ -225,11 +244,12 @@ class TestAuthenticationEdgeCases:
             mock_settings.api_key = special_key
             headers = {"x-api-key": special_key}
 
-            response = client.get("/sessions", headers=headers)
+            response = self._protected_authenticated_request(client, headers)
 
             # Should handle special characters correctly
-            # If 401, it means auth failed, but we want to ensure no 500 error
-            assert response.status_code in [200, 401]
+            # If 401, auth rejected the key.
+            # If 200/503, auth accepted it and the health endpoint responded.
+            assert response.status_code in [200, 401, 503]
 
     def test_auth_with_very_long_key(self, client, mock_services):
         """Test authentication with very long API key."""
@@ -239,10 +259,10 @@ class TestAuthenticationEdgeCases:
             mock_settings.api_key = long_key
             headers = {"x-api-key": long_key}
 
-            response = client.get("/sessions", headers=headers)
+            response = self._protected_authenticated_request(client, headers)
 
             # Should handle long keys (within reason)
-            assert response.status_code in [200, 401]
+            assert response.status_code in [200, 401, 503]
 
     def test_auth_with_whitespace_in_key(self, client, mock_services):
         """Test authentication with whitespace in API key."""
