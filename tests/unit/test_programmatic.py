@@ -13,7 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
+from src.models.files import FileInfo
 from src.models.programmatic import (
+    PTCFileInput,
     ProgrammaticExecRequest,
     ProgrammaticExecResponse,
     PTCToolCall,
@@ -62,7 +64,11 @@ def mock_sandbox_manager(mock_sandbox_info):
 @pytest.fixture
 def ptc_service(mock_sandbox_manager):
     """Create a ProgrammaticService with mocked sandbox manager."""
-    return ProgrammaticService(sandbox_manager=mock_sandbox_manager)
+    file_service = AsyncMock()
+    return ProgrammaticService(
+        sandbox_manager=mock_sandbox_manager,
+        file_service=file_service,
+    )
 
 
 # =============================================================================
@@ -205,14 +211,50 @@ class TestProgrammaticExecRequest:
             session_id="sess-123",
             user_id="user-456",
             entity_id="asst_abc",
-            timeout=60,
-            files=[{"filename": "test.txt", "content": "data"}],
+            timeout=60000,
+            files=[
+                {
+                    "session_id": "source-session",
+                    "id": "file-123",
+                    "name": "test.txt",
+                }
+            ],
         )
         assert req.session_id == "sess-123"
         assert req.user_id == "user-456"
         assert req.entity_id == "asst_abc"
-        assert req.timeout == 60
+        assert req.timeout == 60000
         assert len(req.files) == 1
+        assert isinstance(req.files[0], PTCFileInput)
+
+    def test_request_accepts_file_reference_shape(self):
+        """LibreChat-style file references should validate."""
+        req = ProgrammaticExecRequest(
+            code="print('hello')",
+            files=[
+                {
+                    "session_id": "sess-123",
+                    "id": "file-123",
+                    "name": "report.csv",
+                }
+            ],
+        )
+        assert req.files[0].session_id == "sess-123"
+        assert req.files[0].id == "file-123"
+        assert req.files[0].name == "report.csv"
+
+    def test_timeout_validation_is_milliseconds(self):
+        """PTC timeout should use the public millisecond contract."""
+        with pytest.raises(ValidationError):
+            ProgrammaticExecRequest(code="x", timeout=60)
+
+    def test_request_rejects_legacy_inline_file_shape(self):
+        """PTC no longer accepts inline {filename, content} payloads."""
+        with pytest.raises(ValidationError):
+            ProgrammaticExecRequest(
+                code="print('hello')",
+                files=[{"filename": "test.txt", "content": "data"}],
+            )
 
     def test_continuation_request(self):
         """Continuation request with token and results should be valid."""
@@ -350,17 +392,16 @@ class TestProgrammaticServiceStartExecution:
         with (
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.read_bytes", return_value=b"# ptc_server.py"),
-            patch("src.services.programmatic.NsjailConfig") as mock_nsjail_config,
+            patch.object(
+                ptc_service._nsjail_config,
+                "build_args",
+                return_value=["--config", "/tmp/test.cfg"],
+            ),
             patch(
                 "asyncio.create_subprocess_exec",
                 new_callable=AsyncMock,
             ) as mock_subprocess,
         ):
-            mock_nsjail_config.return_value.build_args.return_value = [
-                "--config",
-                "/tmp/test.cfg",
-            ]
-
             # Mock process that returns completed response
             mock_proc = AsyncMock()
             mock_proc.stdin = AsyncMock()
@@ -400,14 +441,16 @@ class TestProgrammaticServiceStartExecution:
         with (
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.read_bytes", return_value=b"# ptc_server.py"),
-            patch("src.services.programmatic.NsjailConfig") as mock_nsjail_config,
+            patch.object(
+                ptc_service._nsjail_config,
+                "build_args",
+                return_value=[],
+            ),
             patch(
                 "asyncio.create_subprocess_exec",
                 side_effect=OSError("Cannot start process"),
             ),
         ):
-            mock_nsjail_config.return_value.build_args.return_value = []
-
             response = await ptc_service.start_execution(
                 code="print('hello')",
                 tools=[],
@@ -417,6 +460,150 @@ class TestProgrammaticServiceStartExecution:
         assert response.status == "error"
         assert "Execution failed" in response.error
         mock_sandbox_manager.destroy_sandbox.assert_called_once()
+
+    async def test_start_execution_mounts_referenced_files(
+        self, ptc_service, mock_sandbox_manager
+    ):
+        """LibreChat-style file refs should be resolved and mounted."""
+        ptc_service._file_service.get_file_info.return_value = FileInfo(
+            file_id="file-123",
+            filename="server-side.bin",
+            size=14,
+            content_type="text/csv",
+            created_at=datetime.utcnow(),
+            path="/report.csv",
+        )
+        ptc_service._file_service.get_file_content.return_value = b"col1,col2\n1,2\n"
+
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.read_bytes", return_value=b"# ptc_server.py"),
+            patch.object(
+                ptc_service._nsjail_config,
+                "build_args",
+                return_value=["--config", "/tmp/x"],
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                new_callable=AsyncMock,
+            ) as mock_subprocess,
+        ):
+            mock_proc = AsyncMock()
+            mock_proc.stdin = AsyncMock()
+            mock_proc.stdin.write = MagicMock()
+            mock_proc.stdin.drain = AsyncMock()
+            mock_proc.returncode = None
+            mock_proc.pid = 12345
+            mock_proc.stdout = AsyncMock()
+            mock_proc.stdout.read = AsyncMock(
+                return_value=(
+                    json.dumps(
+                        {"type": "completed", "stdout": "ok\n", "stderr": ""}
+                    )
+                    + PTC_DELIMITER
+                ).encode()
+            )
+            mock_proc.stderr = AsyncMock()
+            mock_proc.stderr.read = AsyncMock(return_value=b"")
+            mock_subprocess.return_value = mock_proc
+
+            response = await ptc_service.start_execution(
+                code="print('hello')",
+                tools=[],
+                session_id="sess-123",
+                files=[
+                    PTCFileInput(
+                        session_id="upload-session",
+                        id="file-123",
+                        name="nested/report.csv",
+                    )
+                ],
+            )
+
+        assert response.status == "completed"
+        ptc_service._file_service.get_file_info.assert_awaited_once_with(
+            "upload-session",
+            "file-123",
+        )
+        ptc_service._file_service.get_file_content.assert_awaited_once_with(
+            "upload-session",
+            "file-123",
+        )
+        assert mock_sandbox_manager.copy_content_to_sandbox.call_args_list[1].args == (
+            mock_sandbox_manager.create_sandbox.return_value,
+            b"col1,col2\n1,2\n",
+            "/mnt/data/report.csv",
+        )
+
+    async def test_start_execution_errors_when_referenced_file_missing(
+        self, ptc_service, mock_sandbox_manager
+    ):
+        """Missing file refs should fail before the PTC process starts."""
+        ptc_service._file_service.get_file_info.return_value = None
+        ptc_service._file_service.get_file_content.return_value = None
+
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.read_bytes", return_value=b"# ptc_server.py"),
+            patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_proc,
+        ):
+            response = await ptc_service.start_execution(
+                code="print('hello')",
+                tools=[],
+                session_id="sess-123",
+                files=[
+                    PTCFileInput(
+                        session_id="upload-session",
+                        id="file-404",
+                        name="missing.csv",
+                    )
+                ],
+            )
+
+        assert response.status == "error"
+        assert "Referenced PTC file metadata could not be loaded" in response.error
+        mock_proc.assert_not_called()
+
+    async def test_continue_uses_remaining_execution_timeout(self, ptc_service):
+        """Continuation should keep using the initial execution timeout budget."""
+        token = "timeout-token"
+        mock_proc = AsyncMock()
+        mock_proc.returncode = None
+        mock_proc.pid = 12345
+        mock_proc.stdin = AsyncMock()
+        mock_proc.stdin.write = MagicMock()
+        mock_proc.stdin.drain = AsyncMock()
+
+        ctx = PausedContext(
+            sandbox_info=SandboxInfo(
+                sandbox_id="sb-timeout",
+                sandbox_dir=Path("/tmp/sb-timeout"),
+                data_dir=Path("/tmp/sb-timeout/data"),
+                language="py",
+                session_id="sess-timeout",
+                created_at=datetime.utcnow(),
+                repl_mode=False,
+            ),
+            process=mock_proc,
+            session_id="sess-timeout",
+            execution_deadline=100.0,
+            execution_timeout_seconds=60,
+        )
+        ptc_service._paused_contexts[token] = ctx
+
+        with patch("time.monotonic", return_value=70.2), patch.object(
+            ptc_service,
+            "_read_ptc_response",
+            new_callable=AsyncMock,
+        ) as mock_read:
+            mock_read.return_value = ProgrammaticExecResponse(status="completed")
+            await ptc_service.continue_execution(
+                continuation_token=token,
+                tool_results=[PTCToolResult(call_id="c1", result="ok")],
+            )
+
+        assert mock_read.await_args.kwargs["timeout"] == 30
+        assert mock_read.await_args.kwargs["execution_timeout_seconds"] == 60
 
 
 # =============================================================================
@@ -518,6 +705,35 @@ class TestProgrammaticServiceContinueExecution:
             )
 
         mock_timeout.cancel.assert_called_once()
+
+
+class TestProgrammaticServiceReadResponse:
+    """Tests for low-level PTC response handling."""
+
+    async def test_read_response_reports_timeout_when_process_exits_at_deadline(
+        self, ptc_service, mock_sandbox_info
+    ):
+        """EOF at the execution deadline should surface as a timeout."""
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 137
+        mock_proc.pid = 12345
+        mock_proc.stdout = AsyncMock()
+        mock_proc.stdout.read = AsyncMock(return_value=b"")
+        mock_proc.stderr = AsyncMock()
+        mock_proc.stderr.read = AsyncMock(return_value=b"")
+
+        with patch("time.monotonic", return_value=10.0):
+            response = await ptc_service._read_ptc_response(
+                proc=mock_proc,
+                sandbox_info=mock_sandbox_info,
+                session_id="sess-timeout",
+                timeout=1,
+                execution_deadline=10.0,
+                execution_timeout_seconds=1,
+            )
+
+        assert response.status == "error"
+        assert response.error == "Execution timed out after 1 seconds"
 
 
 # =============================================================================

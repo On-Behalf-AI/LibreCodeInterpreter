@@ -1,18 +1,9 @@
 """
-LibreChat Compatibility Tests - Strict Acceptance Tests
+LibreChat request/response contract tests.
 
-This test suite verifies EXACT LibreChat API compatibility by testing only
-what LibreChat actually sends and expects. These tests serve as acceptance
-criteria for LibreChat integration.
-
-Source of truth:
-- @librechat/agents package: src/tools/CodeExecutor.ts
-- LibreChat API: api/server/services/Files/Code/crud.js, process.js
-
-Test approach:
-- Mock ExecutionOrchestrator.execute() to return ExecResponse directly
-- Tests verify the API contract, not internal implementation
-- Only tests actual LibreChat behavior, no backward compatibility tests
+These are fast in-process checks for the wire contract only. They intentionally
+mock the orchestrator and are not the source of truth for end-to-end client
+compatibility; the live replay coverage lives under tests/functional/.
 """
 
 import pytest
@@ -172,11 +163,12 @@ class TestLibreChatExecRequest:
         self, mock_execute, client, auth_headers, mock_exec_response
     ):
         """
-        Test LibreChat request with session_id for file access.
+        Test LibreChat request with session_id for file and Python state continuity.
 
         LibreChat sends session_id to access files from previous executions.
         From CodeExecutor.ts: "Session ID from a previous response to access generated files."
-        Files are loaded into /mnt/data/ and are READ-ONLY.
+        In this backend, Python also reuses interpreter state when the session
+        is reused. Files are loaded into /mnt/data/ and are READ-ONLY.
         """
         mock_execute.return_value = mock_exec_response
 
@@ -188,6 +180,8 @@ class TestLibreChatExecRequest:
 
         response = client.post("/exec", json=request, headers=auth_headers)
         assert response.status_code == 200
+        forwarded_request = mock_execute.call_args.args[0]
+        assert forwarded_request.session_id == "prev-session-abc123"
 
 
 # =============================================================================
@@ -1626,6 +1620,105 @@ class TestLibreChatProgrammaticToolCalling:
         assert "session_id" in data
         assert isinstance(data["stdout"], str)
         assert isinstance(data["stderr"], str)
+        assert mock_service.start_execution.await_args.kwargs["timeout"] is None
+
+    @patch("src.api.programmatic._get_ptc_service")
+    def test_ptc_initial_request_uses_millisecond_timeout_contract(
+        self, mock_get_service, client, auth_headers
+    ):
+        """LibreChat-compatible requests should send timeout in milliseconds."""
+        from src.models.programmatic import ProgrammaticExecResponse
+
+        mock_service = AsyncMock()
+        mock_service.start_execution.return_value = ProgrammaticExecResponse(
+            status="completed",
+            session_id="ptc-timeout-session",
+            stdout="done\n",
+            stderr="",
+        )
+        mock_get_service.return_value = mock_service
+
+        from src.dependencies.services import get_session_service
+
+        mock_session_svc = AsyncMock()
+        mock_session_svc.create_session.return_value = Session(
+            session_id="ptc-timeout-session",
+            status=SessionStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            last_activity=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc),
+            metadata={},
+        )
+        app.dependency_overrides[get_session_service] = lambda: mock_session_svc
+
+        try:
+            response = client.post(
+                "/exec/programmatic",
+                json={
+                    "code": "print('Hello from PTC')",
+                    "timeout": 60000,
+                },
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        assert mock_service.start_execution.await_args.kwargs["timeout"] == 60
+
+    @patch("src.api.programmatic._get_ptc_service")
+    def test_ptc_initial_request_accepts_code_env_file_shape(
+        self, mock_get_service, client, auth_headers
+    ):
+        """LibreChat CodeEnvFile refs should survive request parsing unchanged."""
+        from src.models.programmatic import ProgrammaticExecResponse
+
+        mock_service = AsyncMock()
+        mock_service.start_execution.return_value = ProgrammaticExecResponse(
+            status="completed",
+            session_id="ptc-file-session",
+            stdout="done\n",
+            stderr="",
+        )
+        mock_get_service.return_value = mock_service
+
+        from src.dependencies.services import get_session_service
+
+        mock_session_svc = AsyncMock()
+        mock_session_svc.create_session.return_value = Session(
+            session_id="ptc-file-session",
+            status=SessionStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            last_activity=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc),
+            metadata={},
+        )
+        app.dependency_overrides[get_session_service] = lambda: mock_session_svc
+
+        try:
+            response = client.post(
+                "/exec/programmatic",
+                json={
+                    "code": "print('Hello from PTC')",
+                    "files": [
+                        {
+                            "session_id": "upload-session",
+                            "id": "file-123",
+                            "name": "report.csv",
+                        }
+                    ],
+                },
+                headers=auth_headers,
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        forwarded_files = mock_service.start_execution.await_args.kwargs["files"]
+        assert len(forwarded_files) == 1
+        assert forwarded_files[0].session_id == "upload-session"
+        assert forwarded_files[0].id == "file-123"
+        assert forwarded_files[0].name == "report.csv"
 
     @patch("src.api.programmatic._get_ptc_service")
     def test_ptc_tool_call_required_response(

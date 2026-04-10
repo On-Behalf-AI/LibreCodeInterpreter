@@ -70,11 +70,30 @@ pytest --cov=src tests/
 
 ## Building the Docker Image
 
-The API uses a single unified Docker image containing all 12 language runtimes and nsjail.
+The Docker build is split into three targets:
+
+- `runtime-core`: shared polyglot runtime without R
+- `runtime-r`: heavyweight R layer on top of `runtime-core`
+- `app`: API/application layer on top of `runtime-r`
 
 ```bash
-# Build the unified image
-docker build -t code-interpreter:nsjail .
+# Build the local application image
+docker build --target app -t code-interpreter:nsjail .
+
+# Build only the shared runtime without R
+docker build --target runtime-core -t code-interpreter:runtime-core .
+
+# Build the heavyweight runtime with R
+docker build --target runtime-r -t code-interpreter:runtime-r .
+```
+
+`docker compose up -d` continues to work for local development. Consumers should prefer `docker-compose.prod.yml`, which contains no `build:` step and always pulls the published image.
+
+```bash
+API_IMAGE=code-interpreter:nsjail docker compose up -d
+
+# Consumer path using the published GHCR image
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 For more details on the sandbox architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).

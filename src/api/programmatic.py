@@ -4,17 +4,18 @@ Provides POST /exec/programmatic for executing code that can call
 externally-defined tools during execution.
 """
 
+import math
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
 from ..models.programmatic import (
     ProgrammaticExecRequest,
     ProgrammaticExecResponse,
 )
 from ..services.programmatic import ProgrammaticService
-from ..dependencies.services import SessionServiceDep
+from ..dependencies.services import SessionServiceDep, get_file_service
 from ..models import SessionCreate
 from ..utils.id_generator import generate_request_id
 
@@ -29,14 +30,20 @@ def _get_ptc_service() -> ProgrammaticService:
     """Get or create the PTC service singleton."""
     global _ptc_service
     if _ptc_service is None:
-        _ptc_service = ProgrammaticService()
+        _ptc_service = ProgrammaticService(file_service=get_file_service())
     return _ptc_service
+
+
+def _timeout_ms_to_seconds(timeout_ms: Optional[int]) -> Optional[int]:
+    """Convert the public millisecond timeout contract to internal seconds."""
+    if timeout_ms is None:
+        return None
+    return math.ceil(timeout_ms / 1000)
 
 
 @router.post("/exec/programmatic", response_model=ProgrammaticExecResponse)
 async def execute_programmatic(
     request: ProgrammaticExecRequest,
-    http_request: Request,
     session_service: SessionServiceDep,
 ) -> ProgrammaticExecResponse:
     """Execute code with programmatic tool calling support.
@@ -47,7 +54,6 @@ async def execute_programmatic(
 
     Args:
         request: PTC execution request
-        http_request: HTTP request for auth state
         session_service: Session service for session management
 
     Returns:
@@ -109,7 +115,7 @@ async def execute_programmatic(
         code=request.code,
         tools=request.tools,
         session_id=session_id,
-        timeout=request.timeout,
+        timeout=_timeout_ms_to_seconds(request.timeout),
         files=request.files,
     )
 

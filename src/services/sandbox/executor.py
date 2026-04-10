@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import signal
+import sysconfig
 from typing import Dict, Optional, Tuple
 
 import structlog
@@ -16,6 +17,8 @@ from ...config import settings
 from .nsjail import NsjailConfig, SandboxInfo
 
 logger = structlog.get_logger(__name__)
+DEFAULT_MULTIARCH = sysconfig.get_config_var("MULTIARCH") or "x86_64-linux-gnu"
+DEFAULT_PKG_CONFIG_PATH = f"/usr/lib/{DEFAULT_MULTIARCH}/pkgconfig"
 
 
 class SandboxExecutor:
@@ -208,7 +211,9 @@ class SandboxExecutor:
                 {
                     "CC": "gcc",
                     "CXX": "g++",
-                    "PKG_CONFIG_PATH": "/usr/lib/x86_64-linux-gnu/pkgconfig",
+                    "PKG_CONFIG_PATH": os.environ.get(
+                        "PKG_CONFIG_PATH", DEFAULT_PKG_CONFIG_PATH
+                    ),
                 }
             )
         elif normalized_lang == "php":

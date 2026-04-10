@@ -118,14 +118,13 @@ class SecurityMiddleware:
 
     async def _validate_request(self, request: Request):
         """Validate request content type."""
-        # Only validate content type for non-file upload requests
-        # File uploads are handled by the files API with specific validation
-        # State uploads use raw binary (application/octet-stream)
-        if (
-            request.method in ["POST", "PUT", "PATCH"]
-            and not request.url.path.startswith("/upload")
-            and not request.url.path.startswith("/state/")
-        ):
+        # Only validate content type for non-file upload requests.
+        # File uploads are handled by the files API with specific validation.
+        if request.method in [
+            "POST",
+            "PUT",
+            "PATCH",
+        ] and not request.url.path.startswith("/upload"):
             content_type = request.headers.get("content-type", "")
             allowed_types = [
                 "application/json",

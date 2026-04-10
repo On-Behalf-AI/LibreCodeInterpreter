@@ -37,13 +37,19 @@ class ExecRequest(BaseModel):
     user_id: Optional[str] = Field(default=None, description="Optional user identifier")
     entity_id: Optional[str] = Field(
         default=None,
-        description="Optional assistant/agent identifier for file sharing",
+        description=(
+            "Optional assistant/agent identifier used for session continuity "
+            "and shared file access"
+        ),
         max_length=40,
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     session_id: Optional[str] = Field(
         default=None,
-        description="Optional session ID to continue an existing session (for state persistence)",
+        description=(
+            "Optional session ID to continue an existing session. For Python, "
+            "reusing a session continues interpreter state as well as files."
+        ),
     )
     files: List[RequestFile] = Field(
         default_factory=list,

@@ -1,410 +1,109 @@
 # Testing Guide
 
-This document describes the testing infrastructure, test organization, and how to run tests for the Code Interpreter API.
+This repository uses three test layers. Only the live HTTP layer should be treated as the source of truth for LibreChat compatibility.
 
-## Test Organization
+## Test Layers
 
-Tests are organized into two main categories:
-
-```
+```text
 tests/
-├── conftest.py              # Shared fixtures for all tests
-├── unit/                    # Unit tests (no external dependencies)
-│   ├── test_execution_service.py
-│   ├── test_session_service.py
-│   └── ...
-├── integration/             # Integration tests (require running API, Redis, MinIO)
-│   ├── test_api_contracts.py
-│   ├── test_librechat_compat.py
-│   ├── test_container_behavior.py
-│   ├── test_session_behavior.py
-│   ├── test_session_isolation.py
-│   ├── test_session_state.py
-│   └── test_file_handling.py
-└── snapshots/               # Snapshot data for tests
+├── unit/         # mocked component logic
+├── integration/  # in-process FastAPI wiring and contract checks
+├── functional/   # live HTTP coverage against a running API
+└── snapshots/    # reference payloads
 ```
 
-### Unit Tests (`tests/unit/`)
+### `tests/unit/`
 
-Unit tests validate individual components in isolation:
+- Mock Redis, MinIO, sandboxing, and other infrastructure.
+- Fast feedback for service logic.
+- No external stack required.
 
-- Mock external dependencies (Redis, MinIO, sandbox executor)
-- Fast execution (~seconds)
-- No infrastructure required
+### `tests/integration/`
 
-### Integration Tests (`tests/integration/`)
+- Exercise the FastAPI app in-process via `TestClient`.
+- Validate routing, auth, request parsing, response shape, and thin wiring.
+- `contract_only` tests live here.
+- These tests are not end-to-end compatibility proof.
 
-Integration tests validate end-to-end behavior:
+### `tests/functional/`
 
-- Require running API, Redis, MinIO
-- Test actual API endpoints
-- Validate LibreChat compatibility
-- Test sandbox behavior and cleanup
+- Exercise a running API over real HTTP.
+- Cover sessions, files, downloads, state continuity, PTC, and concurrency.
+- `client_replay` tests mirror the current `librechat-agents` runtime flow.
+- This layer is the primary compatibility signal for LibreChat support.
 
----
+## Markers
+
+- `contract_only`: in-process contract and wiring checks.
+- `live_api`: any test that hits a running API.
+- `client_replay`: runtime-faithful client replay against the live API.
+- `slow`: heavier scenarios for dedicated CI jobs.
 
 ## Running Tests
 
 ### Prerequisites
 
-Before running tests, ensure:
-
-1. **Virtual environment activated:**
-
-   ```bash
-   source .venv/bin/activate
-   ```
-
-2. **Dependencies installed:**
-
-   ```bash
-   pip install -r requirements.txt
-   pip install pytest pytest-asyncio pytest-cov pytest-mock
-   ```
-
-3. **For integration tests, infrastructure running:**
-   ```bash
-   docker compose up -d
-   ```
-
-### Running All Tests
-
 ```bash
-# Run all tests
-pytest tests/
-
-# With verbose output
-pytest -v tests/
-
-# With coverage report
-pytest --cov=src tests/
-```
-
-### Running Unit Tests Only
-
-```bash
-# Run all unit tests
-pytest tests/unit/
-
-# Run a specific test file
-pytest tests/unit/test_execution_service.py
-
-# Run a specific test function
-pytest tests/unit/test_execution_service.py::test_execute_python_code
-```
-
-### Running Integration Tests Only
-
-```bash
-# Run all integration tests
-pytest tests/integration/
-
-# Run core integration tests
-pytest tests/integration/test_api_contracts.py \
-       tests/integration/test_librechat_compat.py \
-       tests/integration/test_container_behavior.py -v
-```
-
-### Running Tests by Marker
-
-```bash
-# Run only slow tests
-pytest -m slow
-
-# Skip slow tests
-pytest -m "not slow"
-
-# Run only Python-related tests
-pytest -k "python"
-```
-
----
-
-## Key Test Files
-
-### API Contract Tests
-
-**File:** `tests/integration/test_api_contracts.py`
-
-Validates API request/response formats match expectations:
-
-- ExecRequest validation
-- ExecResponse structure
-- Error response formats
-- HTTP status codes
-
-### LibreChat Compatibility Tests
-
-**File:** `tests/integration/test_librechat_compat.py`
-
-Ensures compatibility with LibreChat's Code Interpreter API:
-
-- File upload format (multipart/form-data)
-- Session ID handling
-- File reference format
-- Response structure matching LibreChat expectations
-
-### Sandbox Behavior Tests
-
-**File:** `tests/integration/test_container_behavior.py`
-
-Tests sandbox lifecycle and execution:
-
-- Sandbox creation and cleanup
-- Resource limit enforcement
-- Timeout handling
-- Output capture
-
-### Session State Tests
-
-**File:** `tests/integration/test_session_state.py`
-
-Tests Python state persistence:
-
-- Variable persistence across executions
-- Function persistence
-- NumPy/Pandas object persistence
-- State size limits
-- Session isolation
-
-### File Handling Tests
-
-**File:** `tests/integration/test_file_handling.py`
-
-Tests file operations:
-
-- File upload
-- File download
-- File listing
-- File deletion
-- File naming edge cases
-
----
-
-## Writing Tests
-
-### Using Fixtures
-
-Common fixtures are defined in `tests/conftest.py`:
-
-```python
-import pytest
-
-@pytest.fixture
-def api_client():
-    """HTTP client configured for API testing."""
-    import httpx
-    return httpx.AsyncClient(
-        base_url="https://localhost",
-        headers={"x-api-key": "test-api-key-for-development-only"},
-        verify=False
-    )
-
-@pytest.fixture
-def sample_python_code():
-    """Sample Python code for testing."""
-    return "print('Hello, World!')"
-```
-
-### Async Tests
-
-Use `pytest.mark.asyncio` for async tests:
-
-```python
-import pytest
-
-@pytest.mark.asyncio
-async def test_execute_python(api_client):
-    response = await api_client.post("/exec", json={
-        "lang": "py",
-        "code": "print(1+1)",
-        "entity_id": "test",
-        "user_id": "test"
-    })
-    assert response.status_code == 200
-    data = response.json()
-    assert data["stdout"] == "2\n"
-```
-
-### Mocking External Services
-
-For unit tests, mock external dependencies:
-
-```python
-from unittest.mock import AsyncMock, patch
-
-@pytest.mark.asyncio
-async def test_execution_with_mocked_sandbox():
-    with patch("src.services.sandbox.executor.SandboxExecutor") as mock_executor:
-        mock_executor.execute.return_value = ("output", "", 0)
-
-        # Test code here
-```
-
-### Testing State Persistence
-
-```python
-@pytest.mark.asyncio
-async def test_state_persistence(api_client):
-    # First execution - create variable
-    response1 = await api_client.post("/exec", json={
-        "lang": "py",
-        "code": "x = 42",
-        "entity_id": "test",
-        "user_id": "test"
-    })
-    session_id = response1.json()["session_id"]
-
-    # Second execution - use variable
-    response2 = await api_client.post("/exec", json={
-        "lang": "py",
-        "code": "print(x)",
-        "entity_id": "test",
-        "user_id": "test",
-        "session_id": session_id
-    })
-    assert response2.json()["stdout"] == "42\n"
-```
-
----
-
-## Performance Testing
-
-A dedicated performance testing script is available:
-
-```bash
-# Activate virtual environment
+python -m venv .venv
 source .venv/bin/activate
-
-# Install aiohttp for async HTTP requests
-pip install aiohttp
-
-# Run performance tests
-python scripts/perf_test.py
+pip install -r requirements.txt
+pip install pytest pytest-asyncio pytest-cov pytest-mock
 ```
 
-### What Performance Tests Measure
-
-1. **Simple execution latency** - Basic print statement
-2. **Complex execution latency** - NumPy/Pandas operations
-3. **Concurrent request handling** - Multiple simultaneous requests
-4. **State persistence overhead** - Serialization/deserialization time
-5. **File operation latency** - Upload/download speeds
-
-### Sample Output
-
-```
-=== Performance Test Results ===
-
-Simple Python Execution:
-  Mean: 32.5ms
-  P50:  28.0ms
-  P99:  85.0ms
-
-Complex Python Execution:
-  Mean: 125.0ms
-  P50:  110.0ms
-  P99:  250.0ms
-
-Concurrent Requests (10x):
-  Mean: 45.0ms
-  Max:  180.0ms
-```
-
----
-
-## Coverage Reports
-
-Generate coverage reports:
+For live API coverage:
 
 ```bash
-# Generate HTML coverage report
-pytest --cov=src --cov-report=html tests/
-
-# View report
-open htmlcov/index.html
+cp .env.example .env
+docker compose up -d
 ```
 
-### Coverage Targets
-
-| Component       | Target | Current |
-| --------------- | ------ | ------- |
-| src/api/        | 90%+   | -       |
-| src/services/   | 85%+   | -       |
-| src/middleware/ | 80%+   | -       |
-| Overall         | 80%+   | -       |
-
----
-
-## CI/CD Integration
-
-For CI/CD pipelines, use:
+### Fast Feedback
 
 ```bash
-# Run tests with JUnit XML output
-pytest --junitxml=test-results.xml tests/
-
-# Run with coverage in CI format
-pytest --cov=src --cov-report=xml tests/
+pytest tests/unit/ tests/integration/
 ```
 
-### GitHub Actions Example
+### Full Live Compatibility Coverage
 
-```yaml
-- name: Run Tests
-  run: |
-    pip install -r requirements.txt
-    pytest --cov=src --cov-report=xml tests/unit/
-
-- name: Upload Coverage
-  uses: codecov/codecov-action@v3
-  with:
-    files: ./coverage.xml
+```bash
+API_BASE="http://localhost:8000" \
+API_KEY="your-secure-api-key-here-change-this-in-production" \
+pytest tests/functional/ -m live_api -v
 ```
 
----
+### Runtime-Faithful Client Replay Only
 
-## Troubleshooting Tests
+```bash
+API_BASE="http://localhost:8000" \
+API_KEY="your-secure-api-key-here-change-this-in-production" \
+pytest tests/functional/ -m client_replay -v
+```
 
-### Integration Tests Failing
+### Marker-Based Runs
 
-1. **Check infrastructure:**
+```bash
+pytest -m contract_only
+pytest -m slow
+pytest -m "live_api and not slow"
+```
 
-   ```bash
-   docker compose ps  # All services should be "Up"
-   ```
+## Current Source of Truth
 
-2. **Check API health:**
+- Direct `/exec` and file lifecycle compatibility: `tests/functional/test_client_replay.py`
+- PTC runtime replay: `tests/functional/test_client_replay.py`
+- File contracts and reuse: `tests/functional/test_files.py`
+- Generated artifact integrity: `tests/functional/test_generated_artifacts.py`
+- Mounted file edit persistence: `tests/functional/test_mounted_file_edits.py`
 
-   ```bash
-   curl -sk https://localhost/health
-   ```
+If a mocked integration test passes but a `live_api` or `client_replay` test fails, treat the live failure as authoritative.
 
-3. **Check logs:**
-   ```bash
-   docker compose logs api
-   ```
+## CI/CD Test Tiers
 
-### Async Test Issues
+GitHub Actions now uses four workflow tiers:
 
-If async tests hang:
+- `ci.yml`: required PR checks for static analysis, unit tests, `contract_only` integration tests, amd64 app build validation, amd64 live smoke tests, and amd64 `client_replay`
+- `runtime.yml`: publishes `runtime-core` and `runtime-r` images when Docker/runtime inputs change
+- `release.yml`: publishes multi-arch app images after per-arch smoke validation
+- `nightly.yml`: refreshes heavy runtime layers and runs the full/slow live validation suites
 
-- Ensure `pytest-asyncio` is installed
-- Check for unclosed async resources
-- Use `@pytest.mark.asyncio` decorator
-
-### Flaky Tests
-
-For tests that occasionally fail:
-
-- Check for race conditions in sandbox cleanup
-- Ensure proper test isolation
-- Use explicit waits for async operations
-
----
-
-## Related Documentation
-
-- [CONFIGURATION.md](CONFIGURATION.md) - Test environment configuration
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture for test planning
-- [PERFORMANCE.md](PERFORMANCE.md) - Performance testing details
+The amd64 live smoke suite is the required compatibility gate on pull requests. Slow live scenarios stay in nightly validation so the PR path keeps the authoritative checks without forcing the heaviest runtime coverage into every change.

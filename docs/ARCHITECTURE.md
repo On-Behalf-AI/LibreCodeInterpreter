@@ -408,6 +408,6 @@ Response ← SecurityMiddleware ← AuthMiddleware ← LoggingMiddleware ← Met
 | REPL Executor    | `src/services/sandbox/repl_executor.py`  | Python REPL communication                        |
 | nsjail Config    | `src/services/sandbox/nsjail.py`         | nsjail CLI builder and SandboxInfo dataclass      |
 | REPL Server      | `docker/repl_server.py`                  | In-sandbox Python REPL                           |
-| State Service    | `src/services/state.py`                  | Python state persistence                         |
+| State Service    | `src/services/state.py`                  | Internal Python state persistence (no `/state` API) |
 | Event Bus        | `src/core/events.py`                     | Async event-driven communication                 |
 | Settings         | `src/config/__init__.py`                 | Unified configuration                            |
