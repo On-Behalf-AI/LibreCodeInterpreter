@@ -232,13 +232,9 @@ class TestAuthenticationEdgeCases:
     """Test edge cases in authentication."""
 
     @staticmethod
-    def _protected_exec_request(client, headers):
-        """Hit a real authenticated endpoint with a minimal valid payload."""
-        return client.post(
-            "/exec",
-            headers=headers,
-            json={"code": "print('auth edge')", "lang": "py"},
-        )
+    def _protected_authenticated_request(client, headers):
+        """Hit a protected endpoint that exercises auth without exec mocks."""
+        return client.get("/health/detailed", headers=headers)
 
     def test_auth_with_special_characters_in_key(self, client, mock_services):
         """Test authentication with special characters in API key."""
@@ -248,11 +244,12 @@ class TestAuthenticationEdgeCases:
             mock_settings.api_key = special_key
             headers = {"x-api-key": special_key}
 
-            response = self._protected_exec_request(client, headers)
+            response = self._protected_authenticated_request(client, headers)
 
             # Should handle special characters correctly
-            # If 401, auth rejected the key. If 200, auth accepted it.
-            assert response.status_code in [200, 401]
+            # If 401, auth rejected the key.
+            # If 200/503, auth accepted it and the health endpoint responded.
+            assert response.status_code in [200, 401, 503]
 
     def test_auth_with_very_long_key(self, client, mock_services):
         """Test authentication with very long API key."""
@@ -262,10 +259,10 @@ class TestAuthenticationEdgeCases:
             mock_settings.api_key = long_key
             headers = {"x-api-key": long_key}
 
-            response = self._protected_exec_request(client, headers)
+            response = self._protected_authenticated_request(client, headers)
 
             # Should handle long keys (within reason)
-            assert response.status_code in [200, 401]
+            assert response.status_code in [200, 401, 503]
 
     def test_auth_with_whitespace_in_key(self, client, mock_services):
         """Test authentication with whitespace in API key."""
