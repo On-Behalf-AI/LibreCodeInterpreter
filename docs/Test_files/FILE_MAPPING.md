@@ -8,13 +8,16 @@
 | D02 | D02.docx | EN, CGV (General Terms & Conditions of Sale). ~11pg, pas de tables/images |
 | D03 | *(sortie de D02)* | Chaîné : prend le DOCX avec tracked changes produit par D02 |
 | D04 | D04_test_03_proposition_commerciale_variantes.docx | FR, proposition commerciale formation IA. 1pg court |
-| D05 | *(markdown inline)* | Pas de fichier — le markdown est dans le prompt |
+| D05 | *(markdown inline)* | Pas de fichier — markdown dans le prompt. Vérifie pandoc + inject_cover.py |
 | D06 | D06_a_anonymized.docx + D06_b_anonymized.docx | FR, proposition technique (3pg, 2 tables, 7 imgs) + conditions d'exécution (2pg) |
 | D07 | D07.docx | EN, rapport rémunération dirigeants FY2025. ~13pg, 37 tables, 5 imgs |
 | D08 | D08.docx | EN, même contenu que D07 mais plus lourd (419 KB, images différentes) |
 | D09 | D09.doc | Format legacy .doc binaire (186 KB) |
 | D11 | D11.docx | FR, contrat CDD template. ~6pg, pas de tables/images |
 | D12 | D12.docx | EN, formulaire d'autorisation. ~9pg, 23 tables, 1 img, 8 sections |
+| D13 | *(self-contained)* | Courrier via fill_courrier_template.py (template-courrier.docx) |
+| D14 | *(markdown inline)* | Markdown de type CR → doit choisir fill_cr_template (PAS pandoc) |
+| D15 | *(markdown inline)* | Markdown CR avec listes imbriquées → vérifie subitems + bullets |
 
 ## 2. PowerPoint (P01-P12)
 
