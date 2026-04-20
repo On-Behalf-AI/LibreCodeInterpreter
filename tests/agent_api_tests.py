@@ -7,17 +7,20 @@ Usage:
     python3 tests/agent_api_tests.py D01b D01c P01b     # Run specific tests
     python3 tests/agent_api_tests.py --agent docx        # Run all DOCX tests
     python3 tests/agent_api_tests.py --list              # List all tests
+    python3 tests/agent_api_tests.py --no-file           # Skip tests that need files
+    python3 tests/agent_api_tests.py --generate-files    # Generate sample files
 
 Prerequisites:
     - LibreChat running on localhost:3080
-    - Agent API key in AGENT_API_KEY env var or .env file
+    - Agent API key in AGENT_API_KEY env var or .agent-api-key file
     - All agents deployed with current instructions
+    - Test input files in docs/Test_files/ (for NEEDS_FILE tests)
 
 Each test:
-    1. Sends a prompt to the agent via /api/agents/v1/responses
-    2. Checks that the response completed without error
-    3. Validates methodology (checks for expected scripts/patterns in code execution)
-    4. Downloads generated files and validates them
+    1. Optionally uploads input files via LibreChat API
+    2. Sends a prompt to the agent via /api/agents/v1/responses
+    3. Checks that the response completed without error
+    4. Validates methodology (checks for expected scripts/patterns in reasoning/message)
     5. Produces a PASS/FAIL report
 """
 
@@ -44,14 +47,87 @@ API_BASE = os.environ.get("LIBRECHAT_URL", "http://127.0.0.1:3080")
 API_KEY = os.environ.get("AGENT_API_KEY", "")
 CI_BASE = os.environ.get("CODE_INTERPRETER_URL", "http://127.0.0.1:8010")
 CI_KEY = os.environ.get("CODE_INTERPRETER_KEY", "REDACTED_KEY_ROTATED_2026-04-23")
+JWT_TOKEN = os.environ.get("LIBRECHAT_JWT", "")  # For file uploads (optional)
 RESPONSES_ENDPOINT = f"{API_BASE}/api/agents/v1/responses"
 RESULTS_DIR = Path("tests/results")
 FILES_DIR = Path("tests/results/files")
-TIMEOUT = 600  # 10 minutes max per test (agents with code execution can be slow)
+TEST_FILES_DIR = Path("docs/Test_files")
+TIMEOUT = 600  # 10 minutes max per test
 
 # Force unbuffered output
 import functools
 print = functools.partial(print, flush=True)
+
+
+# === Test Input File Mapping ===
+# Maps test_id → list of file paths relative to TEST_FILES_DIR.
+# Tests listed here require input files. If files are missing, the test
+# still runs (methodology-only mode) but logs a warning.
+
+TEST_INPUT_FILES = {
+    # DOCX
+    "D01": ["1. Word/D01_anonymized.docx"],
+    "D03": ["1. Word/D02.docx"],
+    "D04": ["1. Word/D04_test_03_proposition_commerciale_variantes.docx"],
+    "D06": ["1. Word/D06_a_anonymized.docx", "1. Word/D06_b_anonymized.docx"],
+    "D07": ["1. Word/D07.docx"],
+    "D09": ["1. Word/D09.doc"],
+    "D11": ["1. Word/D11.docx"],
+    "D12": ["1. Word/D12.docx"],
+    # PPTX
+    "P02": ["2. PPT/P02.pptx"],
+    "P03": ["2. PPT/P03.pptx"],
+    "P04": ["2. PPT/P04.pptx"],
+    "P05": ["2. PPT/P05.pptx"],
+    "P06": ["2. PPT/P02.pptx"],
+    "P07": ["2. PPT/P05.pptx"],
+    "P09": ["2. PPT/P09.pptx"],
+    "P10": ["2. PPT/P10.pptx"],
+    "P12": ["2. PPT/P12.potx"],
+    # XLSX
+    "X02": ["3. Excel/X02_donnees_commerciales_complexes.xlsx"],
+    "X04": ["3. Excel/X04_ventes_mensuelles_input_complexe.xlsx"],
+    "X05": ["3. Excel/X05_ancien_format_complexe.xls"],
+    "X06": ["3. Excel/X06_transactions_pivot_input_complexe.xlsx"],
+    "X08": ["3. Excel/X08_source_export_pdf_complexe.xlsx"],
+    "X09": ["3. Excel/X09_rapport_complexe_janvier.xlsx",
+             "3. Excel/X09_rapport_complexe_fevrier.xlsx",
+             "3. Excel/X09_rapport_complexe_mars.xlsx"],
+    "X10": ["3. Excel/X10_donnees_sales_complexes.xlsx"],
+    "X12": ["3. Excel/X12_donnees_rh_complexes.xlsx"],
+    # PDF
+    "F01": ["4. PDF/F01_contrat/service-agreement.pdf"],
+    "F02": ["4. PDF/F02_tableaux/invoice-sample.pdf"],
+    "F03": ["4. PDF/F03_ocr/scan-sample.pdf"],
+    "F05": ["4. PDF/F05_split/document-15pages.pdf"],
+    "F06": ["4. PDF/F06_integrite/corrupted.pdf",
+             "4. PDF/F06_integrite/encrypted.pdf",
+             "4. PDF/F06_integrite/not_encrypted.pdf"],
+    "F07": ["4. PDF/F07_images/document-a-convertir.pdf"],
+    "F08": ["4. PDF/F08_metadata/invoice-metadata.pdf"],
+    "F09": ["4. PDF/F09_rotation/document-pages-retournees.pdf"],
+    "F10": ["4. PDF/F10_watermark/document-a-watermarker.pdf"],
+    "F11": ["4. PDF/F11_compression/sample-heavy-25mb.pdf"],
+    "F12": ["4. PDF/F12_pipeline_ocr/bank-statement-scanned.pdf"],
+    # FFmpeg / Quick Edits
+    "M01": ["5. Medias/file_example_MOV_640_800kB.mov"],
+    "M02": ["5. Medias/sample-10s.mp4"],
+    "M03": ["5. Medias/sample_1280x720_surfing_with_audio.avi"],
+    "M04": ["5. Medias/sample-10s.mp4"],
+    "M07": ["5. Medias/Landscape_big_river_in_mountains.jpg"],
+    "M08": ["5. Medias/sample-15s.mp4", "5. Medias/sample-20s.mp4"],
+    "M09": ["5. Medias/sample-10s.mp4", "5. Medias/sample-12s.mp3"],
+    "M10": ["5. Medias/sample-boat-400x300.png",
+             "5. Medias/sample-city-park-400x300.jpg",
+             "5. Medias/sample-clouds-400x300.jpg",
+             "5. Medias/sample-birch-400x300.jpg"],
+    "M11": ["5. Medias/sample_1280x720_surfing_with_audio.avi"],
+    "M12": ["5. Medias/sample-boat-400x300.png",
+             "5. Medias/sample-city-park-400x300.jpg",
+             "5. Medias/sample-clouds-400x300.jpg",
+             "5. Medias/sample-clouds2-400x300.png",
+             "5. Medias/sample-bumblebee-400x300.png"],
+}
 
 
 @dataclass
@@ -64,6 +140,7 @@ class TestResult:
     response_text: str = ""
     code_blocks: list = field(default_factory=list)
     files_generated: list = field(default_factory=list)
+    files_uploaded: list = field(default_factory=list)
     methodology_checks: dict = field(default_factory=dict)
     error: str = ""
 
@@ -75,11 +152,12 @@ class TestCase:
     agent_name: str
     prompt: str
     methodology_patterns: list  # Regex patterns expected in code execution
-    methodology_antipatterns: list = field(default_factory=list)  # Patterns that should NOT appear
+    methodology_antipatterns: list = field(default_factory=list)
     description: str = ""
     expect_file: bool = False
     file_extension: str = ""
-    previous_response_id: Optional[str] = None  # For multi-turn tests
+    needs_file: bool = False  # True if test requires input files
+    previous_response_id: Optional[str] = None
 
 
 # === API Client ===
@@ -103,6 +181,109 @@ def download_file(session_id: str, file_id: str, output_path: Path) -> bool:
         output_path.write_bytes(resp.content)
         return True
     return False
+
+
+def upload_file(file_path: Path) -> Optional[str]:
+    """Upload a file to LibreChat and return file_id.
+
+    Requires JWT_TOKEN (set via --jwt-token or LIBRECHAT_JWT env var).
+    LibreChat's /api/files endpoint uses JWT auth, not API key auth.
+    The Open Responses API does NOT yet pass uploaded files to agents
+    (requestFiles: [] is hardcoded in responses.js). This is future-proofing.
+    """
+    if not JWT_TOKEN:
+        return None
+
+    headers = {"Authorization": f"Bearer {JWT_TOKEN}"}
+    with open(file_path, "rb") as f:
+        resp = requests.post(
+            f"{API_BASE}/api/files",
+            headers=headers,
+            files={"file": (file_path.name, f, "application/octet-stream")},
+            data={"endpoint": "agents"},
+            timeout=120,
+        )
+    if resp.status_code == 200:
+        data = resp.json()
+        return data.get("file_id") or data.get("id") or data.get("_id")
+    return None
+
+
+def call_agent(agent_id: str, prompt: str, file_ids: list = None,
+               previous_response_id: str = None) -> dict:
+    """Call an agent via the Open Responses API."""
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    # Build input: structured if files attached, simple string otherwise
+    if file_ids:
+        content = [{"type": "input_text", "text": prompt}]
+        for fid in file_ids:
+            content.append({"type": "input_file", "file_id": fid})
+        input_data = [{"role": "user", "content": content}]
+    else:
+        input_data = prompt
+
+    payload = {
+        "model": agent_id,
+        "input": input_data,
+        "stream": False,
+    }
+    if previous_response_id:
+        payload["previous_response_id"] = previous_response_id
+
+    resp = requests.post(RESPONSES_ENDPOINT, headers=headers, json=payload, timeout=TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def extract_response_data(response: dict) -> tuple:
+    """Extract text, reasoning, and tool calls from response.
+
+    NOTE: The Open Responses API does NOT return the actual code executed
+    (function_call.arguments is always empty). We can only check methodology
+    via the reasoning text (agent's thinking) and the message text (agent's output).
+    """
+    text_parts = []
+    code_blocks = []
+    files = []
+
+    for output in response.get("output", []):
+        if output.get("type") == "message":
+            for content in output.get("content", []):
+                if content.get("type") == "output_text":
+                    text = content.get("text", "")
+                    text_parts.append(text)
+                    code_blocks.append(("message", text))
+        elif output.get("type") == "reasoning":
+            for content in output.get("content", []):
+                if content.get("type") == "reasoning_text":
+                    code_blocks.append(("reasoning", content.get("text", "")))
+        elif output.get("type") == "function_call":
+            name = output.get("name", "")
+            args = output.get("arguments", "")
+            code_blocks.append(("function_call", f"TOOL_USED: {name} {args}"))
+
+    response_text = "\n".join(text_parts)
+    return response_text, code_blocks, files
+
+
+def check_methodology(code_blocks: list, patterns: list, antipatterns: list) -> dict:
+    """Check that expected methodology patterns are present in code execution."""
+    all_code = "\n".join(text for _, text in code_blocks)
+    results = {}
+
+    for pattern in patterns:
+        found = bool(re.search(pattern, all_code, re.IGNORECASE | re.DOTALL))
+        results[f"EXPECTED: {pattern}"] = "FOUND" if found else "MISSING"
+
+    for pattern in antipatterns:
+        found = bool(re.search(pattern, all_code, re.IGNORECASE | re.DOTALL))
+        results[f"FORBIDDEN: {pattern}"] = "VIOLATION" if found else "OK"
+
+    return results
 
 
 # === File generation scripts (run directly in code-interpreter, bypass LLM) ===
@@ -174,80 +355,13 @@ print("OK")
 }
 
 
-def call_agent(agent_id: str, prompt: str, previous_response_id: str = None) -> dict:
-    """Call an agent via the Open Responses API."""
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": agent_id,
-        "input": prompt,
-        "stream": False,
-    }
-    if previous_response_id:
-        payload["previous_response_id"] = previous_response_id
-
-    resp = requests.post(RESPONSES_ENDPOINT, headers=headers, json=payload, timeout=TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
-
-
-def extract_response_data(response: dict) -> tuple:
-    """Extract text, reasoning, and tool calls from response.
-
-    NOTE: The Open Responses API does NOT return the actual code executed
-    (function_call.arguments is always empty). We can only check methodology
-    via the reasoning text (agent's thinking) and the message text (agent's output).
-    Both are concatenated into code_blocks for pattern matching.
-    """
-    text_parts = []
-    code_blocks = []
-    files = []
-
-    for output in response.get("output", []):
-        if output.get("type") == "message":
-            for content in output.get("content", []):
-                if content.get("type") == "output_text":
-                    text = content.get("text", "")
-                    text_parts.append(text)
-                    code_blocks.append(("message", text))
-        elif output.get("type") == "reasoning":
-            for content in output.get("content", []):
-                if content.get("type") == "reasoning_text":
-                    code_blocks.append(("reasoning", content.get("text", "")))
-        elif output.get("type") == "function_call":
-            name = output.get("name", "")
-            args = output.get("arguments", "")
-            # Track that code execution happened
-            code_blocks.append(("function_call", f"TOOL_USED: {name} {args}"))
-
-    response_text = "\n".join(text_parts)
-    return response_text, code_blocks, files
-
-
-def check_methodology(code_blocks: list, patterns: list, antipatterns: list) -> dict:
-    """Check that expected methodology patterns are present in code execution."""
-    all_code = "\n".join(text for _, text in code_blocks)
-    results = {}
-
-    for pattern in patterns:
-        found = bool(re.search(pattern, all_code, re.IGNORECASE | re.DOTALL))
-        results[f"EXPECTED: {pattern}"] = "FOUND" if found else "MISSING"
-
-    for pattern in antipatterns:
-        found = bool(re.search(pattern, all_code, re.IGNORECASE | re.DOTALL))
-        results[f"FORBIDDEN: {pattern}"] = "VIOLATION" if found else "OK"
-
-    return results
-
-
 # === Test Definitions ===
 
 TESTS = []
 
 
-def test(test_id, agent_id, agent_name, prompt, patterns, antipatterns=None, description="", expect_file=False, file_ext=""):
+def test(test_id, agent_id, agent_name, prompt, patterns, antipatterns=None,
+         description="", expect_file=False, file_ext=""):
     """Register a test case."""
     TESTS.append(TestCase(
         test_id=test_id,
@@ -259,16 +373,13 @@ def test(test_id, agent_id, agent_name, prompt, patterns, antipatterns=None, des
         description=description,
         expect_file=expect_file,
         file_extension=file_ext,
+        needs_file=test_id in TEST_INPUT_FILES,
     ))
 
 
 # ==========================================
-# DOCX Agent Tests
+# DOCX Agent — Self-contained tests
 # ==========================================
-
-# NOTE: The Open Responses API does NOT return executed code.
-# Patterns are checked against reasoning (agent thinking) + message (agent output).
-# We verify methodology intent, not exact code.
 
 test("D01b", "agent_docx_complete", "DOCX",
      "Crée un compte-rendu de la réunion suivante : Réunion du 10 avril 2026, visioconférence Teams, "
@@ -309,8 +420,8 @@ test("D05", "agent_docx_complete", "DOCX",
      "Le télétravail est ouvert à tous les collaborateurs.\n"
      "## 2. Modalités\n- Maximum 3 jours par semaine\n- Accord du manager requis\n"
      "## 3. Obligations\nRespecter les horaires définis.",
-     patterns=[r"pandoc|markdown|convert"],
-     description="Conversion Markdown → DOCX avec template OBA pandoc")
+     patterns=[r"pandoc|markdown|convert", r"inject_cover|cover"],
+     description="Conversion Markdown -> DOCX avec pandoc + inject_cover.py")
 
 test("D08", "agent_docx_complete", "DOCX",
      "Convertis ce texte en PDF professionnel avec mise en forme OBA :\n\n"
@@ -318,7 +429,7 @@ test("D08", "agent_docx_complete", "DOCX",
      "Section 1 : Résumé exécutif\nLe mois d'avril a été marqué par une croissance de 15%.\n\n"
      "Section 2 : Détails\n- Ventes : 150k€\n- Charges : 120k€\n- Résultat : +30k€",
      patterns=[r"pdf|soffice|convert"],
-     description="Conversion DOCX → PDF via soffice",
+     description="Conversion DOCX -> PDF via soffice",
      expect_file=True, file_ext=".pdf")
 
 test("D10", "agent_docx_complete", "DOCX",
@@ -332,18 +443,136 @@ test("D10", "agent_docx_complete", "DOCX",
      description="Création avec fill_template.py + type table",
      expect_file=True, file_ext=".docx")
 
+test("D13", "agent_docx_complete", "DOCX",
+     "Rédige un courrier professionnel adressé à M. Pascal Caiozzo, Arémont SAS, 75008 Paris. "
+     "Objet : proposition d'accompagnement IA pour les équipes achats. "
+     "Contenu : suite à notre échange, nous proposons une intervention en 3 étapes (keynote, formation, acculturation) "
+     "pour un budget de 11 900€ HT. Signé par Damien Juillard, Consultant IA, On Behalf AI.",
+     patterns=[
+         r"fill_courrier|template.*courrier|courrier",
+         r"execute_code",
+     ],
+     description="Créer un courrier via fill_courrier_template.py",
+     expect_file=True, file_ext=".docx")
+
+test("D14", "agent_docx_complete", "DOCX",
+     "Fais un document Word à partir de ce markdown de réunion :\n\n"
+     "# Compte-rendu de réunion - Projet Alpha\n\n"
+     "## Informations\n\n- **Date :** 15 avril 2026\n- **Lieu :** Visioconférence\n\n"
+     "## Participants\n\n- Sophie Martin (DRH, Nextera)\n- Damien Juillard (Consultant, OBA)\n\n"
+     "## Décisions\n\n1. **Lancement POC** prévu le 1er mai\n   - Budget : 15k€\n   - Pilote : équipe RH\n"
+     "2. **Formation** des managers en juin\n   - 3 sessions de 2h\n\n"
+     "## Actions\n\n- Damien : envoyer proposition avant le 20 avril\n- Sophie : valider budget interne",
+     patterns=[
+         r"fill_cr_template|template.*CR|compte.rendu",
+         r"execute_code",
+     ],
+     description="Markdown de type CR → doit choisir fill_cr_template (PAS pandoc)",
+     expect_file=True, file_ext=".docx")
+
+test("D15", "agent_docx_complete", "DOCX",
+     "Voici un compte-rendu en markdown. Fais-en un Word :\n\n"
+     "# CR Réunion Projet Beta\n\n## Infos\n\n- **Date :** 18/04/2026\n- **Lieu :** Teams\n\n"
+     "## Participants\n\n- Alice Dupont (Chef de projet, ClientCo)\n- Bob Martin (Dev Lead, OBA)\n\n"
+     "## Points abordés\n\n1. **Planning sprint 4**\n   - Livraison prévue le 30 avril\n"
+     "   - 3 stories restantes\n2. **Bug critique #142**\n   - Corrigé en prod\n   - Post-mortem prévu\n\n"
+     "## Actions\n\n- Alice : valider la recette avant le 25\n- Bob : préparer le post-mortem",
+     patterns=[
+         r"fill_cr_template|template.*CR|compte.rendu",
+         r"subitems|sub.?items",
+         r"execute_code",
+     ],
+     description="Markdown CR avec listes imbriquées → fill_cr_template avec subitems",
+     expect_file=True, file_ext=".docx")
+
 
 # ==========================================
-# PPTX Agent Tests
+# DOCX Agent — Tests nécessitant un fichier source
+# ==========================================
+
+test("D01", "agent_docx_complete", "DOCX",
+     "Voici un rapport d'audit DAF en français (D01_anonymized.docx) : 6 pages avec tableaux, "
+     "images et pieds de page. Analyse sa structure et sa mise en forme (styles, polices, couleurs, "
+     "en-têtes, pieds de page). Puis produis un nouveau CR dans un format strictement identique : "
+     "Réunion produit du 14 avril 2026. Participants : Marie, Jean, Sophie. "
+     "Décision : lancement V2 le 15 juin. Action : Jean prépare le plan média avant le 1er mai.",
+     patterns=[r"unpack|lxml|template|analyse"],
+     description="Reproduire un CR depuis template utilisateur",
+     expect_file=True, file_ext=".docx")
+
+test("D03", "agent_docx_complete", "DOCX",
+     "Voici un fichier de CGV en anglais (D02.docx, ~11 pages). D'abord, remplace toutes les "
+     "occurrences de 'the Client' par 'the User' en tracked changes. Puis accepte tous les "
+     "tracked changes et produis la version finale propre du document.",
+     patterns=[r"accept_changes|accept|tracked"],
+     description="Tracked changes + accepter -> version propre",
+     expect_file=True, file_ext=".docx")
+
+test("D04", "agent_docx_complete", "DOCX",
+     "Voici une proposition commerciale de formation IA (D04_test_03_proposition_commerciale_variantes.docx, "
+     "1 page en français). Relis-la et ajoute les commentaires Word suivants : "
+     "(1) sur le premier paragraphe décrivant les prestations, commente "
+     "'À détailler avec les cas d'usage spécifiques du client', "
+     "(2) sur le montant ou tarif mentionné, commente "
+     "'Remise de 10% à négocier pour contrat annuel ?'.",
+     patterns=[r"comment|commentaire|unpack"],
+     description="Ajouter commentaires de relecture",
+     expect_file=True, file_ext=".docx")
+
+test("D06", "agent_docx_complete", "DOCX",
+     "Voici deux documents Word à fusionner : D06_a_anonymized.docx (proposition technique, "
+     "3 pages avec tableaux et images) et D06_b_anonymized.docx (conditions d'exécution, 2 pages). "
+     "Fusionne-les en un seul document : la proposition technique en premier, un saut de page, "
+     "puis les conditions d'exécution. Conserve la mise en forme de chaque document.",
+     patterns=[r"fusionne|merge|docxcompose|page_break"],
+     description="Fusion de deux DOCX",
+     expect_file=True, file_ext=".docx")
+
+test("D07", "agent_docx_complete", "DOCX",
+     "Voici un rapport de rémunération des dirigeants FY2025 en anglais (D07.docx, ~13 pages, "
+     "37 tableaux, 5 images). Analyse ce document Word et extrais-moi un résumé structuré : "
+     "liste des titres de sections, nombre de tableaux, nombre d'images, et le texte des "
+     "3 premiers paragraphes.",
+     patterns=[r"unpack|pandoc|python-docx|analyse|section"],
+     description="Extraction contenu structuré DOCX complexe")
+
+test("D09", "agent_docx_complete", "DOCX",
+     "Ce fichier (D09.doc, 186 Ko) est dans l'ancien format Word .doc binaire. "
+     "Convertis-le en .docx moderne en conservant toute la mise en forme et le contenu.",
+     patterns=[r"soffice|convert.*docx"],
+     description="Conversion .doc legacy -> .docx",
+     expect_file=True, file_ext=".docx")
+
+test("D11", "agent_docx_complete", "DOCX",
+     "Voici un contrat de travail CDD en français (D11.docx, ~6 pages). Dans ce document, "
+     "seule la première occurrence de 'Directeur' doit être remplacée par 'Directrice' "
+     "(c'est un changement de titre pour la DG uniquement). Fais-le en tracked changes.",
+     patterns=[r"tracked.replace|tracked.change|--first|first|première"],
+     description="Remplacement ciblé --first en tracked changes",
+     expect_file=True, file_ext=".docx")
+
+test("D12", "agent_docx_complete", "DOCX",
+     "Voici un formulaire d'autorisation en anglais (D12.docx, 9 pages, 23 tableaux, 8 sections). "
+     "Remplis-le avec : consultant=Marie Dupont, client=Société ABC, date=1er mai 2026, "
+     "durée=6 mois, tarif=850€ HT. Puis remplace 'the terms defined' par "
+     "'the revised terms of the framework agreement' en tracked changes. "
+     "Exporte le résultat final en PDF.",
+     patterns=[r"unpack|tracked|soffice|pdf"],
+     description="Pipeline complet template -> tracked changes -> PDF",
+     expect_file=True, file_ext=".pdf")
+
+
+# ==========================================
+# PPTX Agent — Self-contained tests
 # ==========================================
 
 test("P01b", "agent_pptx_complete", "PPTX",
      "Crée une présentation de 5 slides sur l'IA générative pour une réunion interne.",
      patterns=[
-         r"pptxgenjs|pptxgen|PptxGenJS|Node",
+         r"pptxgenjs|pptxgen|PptxGenJS|create_from_template|template.*corporate|template.*OBA",
          r"execute_code",
      ],
-     description="Création PPTX avec palette OBA",
+     description="Création PPTX avec template OBA ou pptxgenjs",
      expect_file=True, file_ext=".pptx")
 
 test("P01", "agent_pptx_complete", "PPTX",
@@ -369,9 +598,91 @@ test("P08", "agent_pptx_complete", "PPTX",
      description="Création slides avec graphiques pptxgenjs",
      expect_file=True, file_ext=".pptx")
 
+test("P11", "agent_pptx_complete", "PPTX",
+     "Crée une mini-présentation de 3 slides : (1) Titre 'Résultats T1', "
+     "(2) Barres ventes par région, (3) Camembert répartition charges.",
+     patterns=[r"pptxgenjs|pptxgen|chart|addChart"],
+     description="Création PPTX avec graphiques",
+     expect_file=True, file_ext=".pptx")
+
 
 # ==========================================
-# XLSX Agent Tests
+# PPTX Agent — Tests nécessitant un fichier source
+# ==========================================
+
+test("P02", "agent_pptx_complete", "PPTX",
+     "Voici un deck 'Researcher Deep Dive' sur l'IA (P02.pptx, 20 slides, 9 Mo). "
+     "Remplace le titre du slide 1 par 'Bilan annuel 2025' et le sous-titre par "
+     "'Direction Commerciale'. Mets à jour la date en pied de page sur tous les slides "
+     "à 'Avril 2026'. Conserve strictement la charte graphique existante.",
+     patterns=[r"unpack|xml|edit|slide"],
+     description="Edition template PPTX existant",
+     expect_file=True, file_ext=".pptx")
+
+test("P03", "agent_pptx_complete", "PPTX",
+     "Voici un template PowerPoint (P03.pptx, 20 slides). Analyse-le : montre-moi un aperçu "
+     "visuel (thumbnails) de tous les layouts disponibles et dis-moi quels types de slides "
+     "je peux créer avec chacun.",
+     patterns=[r"thumbnail|layout|aperçu|analyse"],
+     description="Analyse template avec thumbnails")
+
+test("P04", "agent_pptx_complete", "PPTX",
+     "Voici une présentation (P04.pptx) avec un slide daté du 30/06/2025. "
+     "Duplique ce slide 3 fois pour avoir 4 copies au total.",
+     patterns=[r"add_slide|dupli|copie"],
+     description="Duplication de slides",
+     expect_file=True, file_ext=".pptx")
+
+test("P05", "agent_pptx_complete", "PPTX",
+     "Ce fichier PowerPoint (P05.pptx) fait 19 Mo avec 49 slides (deck corporate "
+     "'Conseil et Opérateur d'IA'). C'est trop lourd pour l'envoi par email. "
+     "Nettoie-le : supprime les slides masqués, les médias non référencés, et optimise la taille.",
+     patterns=[r"clean|nettoie|orphan"],
+     description="Nettoyage PPTX volumineux 19 Mo",
+     expect_file=True, file_ext=".pptx")
+
+test("P06", "agent_pptx_complete", "PPTX",
+     "Convertis cette présentation (P02.pptx, 20 slides) en PDF fidèle pour diffusion "
+     "aux participants de la réunion.",
+     patterns=[r"soffice|pdf|convert"],
+     description="Conversion PPTX -> PDF",
+     expect_file=True, file_ext=".pdf")
+
+test("P07", "agent_pptx_complete", "PPTX",
+     "J'ai besoin du contenu textuel de cette présentation corporate (P05.pptx, 49 slides, "
+     "'Conseil et Opérateur d'IA'). Extrais tout le texte slide par slide en markdown structuré.",
+     patterns=[r"markitdown|markdown|extract"],
+     description="Extraction contenu PPTX en markdown")
+
+test("P09", "agent_pptx_complete", "PPTX",
+     "Voici un template PowerPoint vide On Behalf AI (P09.pptx) avec 47 layouts disponibles "
+     "mais aucun slide. Ajoute un nouveau slide en utilisant le 2ème layout disponible. "
+     "Titre : 'Prochaines étapes', contenu : 'Valider le budget', 'Recruter 2 développeurs', "
+     "'Lancer la V2 en juin'.",
+     patterns=[r"add_slide|layout|unpack"],
+     description="Ajout slide depuis layout sur template vide",
+     expect_file=True, file_ext=".pptx")
+
+test("P10", "agent_pptx_complete", "PPTX",
+     "Voici un deck corporate en français (P10.pptx, 26 slides, 5 Mo). "
+     "Remplace toutes les occurrences de 'On Behalf AI' par 'OBA Consulting' "
+     "dans tous les slides, y compris les masters et layouts.",
+     patterns=[r"replace|remplac|unpack|xml"],
+     description="Remplacement texte dans toute la présentation",
+     expect_file=True, file_ext=".pptx")
+
+test("P12", "agent_pptx_complete", "PPTX",
+     "Voici un template PowerPoint (.potx) avec 18 layouts et 8 slides de référence (P12.potx). "
+     "Analyse ce template corporate, puis crée 3 nouveaux slides dans le même style : "
+     "'Objectifs 2026' avec 4 bullet points, 'Budget prévisionnel' avec un tableau 4x3, "
+     "et 'Calendrier'. Exporte le résultat en PDF.",
+     patterns=[r"thumbnail|analyse|add_slide|soffice|pdf"],
+     description="Pipeline analyse template -> création -> export PDF",
+     expect_file=True, file_ext=".pdf")
+
+
+# ==========================================
+# XLSX Agent — Self-contained tests
 # ==========================================
 
 test("X01", "agent_xlsx_complete", "XLSX",
@@ -395,9 +706,100 @@ test("X03", "agent_xlsx_complete", "XLSX",
      description="Création Excel + recalc.py",
      expect_file=True, file_ext=".xlsx")
 
+test("X07", "agent_xlsx_complete", "XLSX",
+     "Crée un fichier Excel de suivi des objectifs avec 10 vendeurs : vert si résultat >= objectif, "
+     "orange entre 80-100%, rouge si < 80%.",
+     patterns=[r"openpyxl|Conditional|mise.en.forme|couleur"],
+     description="Mise en forme conditionnelle",
+     expect_file=True, file_ext=".xlsx")
+
+test("X11", "agent_xlsx_complete", "XLSX",
+     "Crée un modèle de prévision de trésorerie sur 12 mois : solde initial 50k€, "
+     "encaissements croissants +5%/mois depuis 20k€, décaissements fixes 18k€. "
+     "Formules Excel natives, négatifs en rouge.",
+     patterns=[r"openpyxl|formul|=SUM|trésorerie|prévision"],
+     description="Modèle financier avec formules complexes",
+     expect_file=True, file_ext=".xlsx")
+
 
 # ==========================================
-# PDF Agent Tests
+# XLSX Agent — Tests nécessitant un fichier source
+# ==========================================
+
+test("X02", "agent_xlsx_complete", "XLSX",
+     "Voici un export CRM de données commerciales (X02_donnees_commerciales_complexes.xlsx) : "
+     "3000 commandes sur 28 colonnes, avec montants HT/TVA/TTC et multi-onglets (commandes, "
+     "clients, produits). Analyse ce fichier : (1) nombre de lignes/colonnes par onglet, "
+     "(2) types de données par colonne, (3) valeurs manquantes, (4) top 5 clients par CA, "
+     "(5) répartition mensuelle du CA.",
+     patterns=[r"pandas|read_excel|describe|info|groupby"],
+     description="Analyse Excel commercial 3000 lignes")
+
+test("X04", "agent_xlsx_complete", "XLSX",
+     "Voici un fichier de ventes mensuelles (X04_ventes_mensuelles_input_complexe.xlsx) avec "
+     "24 mois de données par canal (en ligne, boutique, etc.) incluant budget et variance. "
+     "Ajoute un graphique en barres montrant l'évolution des ventes mensuelles totales. "
+     "Place le graphique dans un nouvel onglet 'Dashboard'.",
+     patterns=[r"openpyxl|BarChart|chart|Dashboard"],
+     description="Graphique barres dans Excel 24 mois",
+     expect_file=True, file_ext=".xlsx")
+
+test("X05", "agent_xlsx_complete", "XLSX",
+     "Ce fichier (X05_ancien_format_complexe.xls) est dans l'ancien format Excel .xls "
+     "avec 2 onglets annuels et des formules legacy. Convertis-le en .xlsx moderne "
+     "sans perdre les données ni les formules.",
+     patterns=[r"soffice|convert.*xlsx"],
+     description="Conversion XLS legacy -> XLSX",
+     expect_file=True, file_ext=".xlsx")
+
+test("X06", "agent_xlsx_complete", "XLSX",
+     "Voici un fichier de 5000 transactions commerciales "
+     "(X06_transactions_pivot_input_complexe.xlsx) avec catégories, sous-catégories et dates. "
+     "Crée un tableau croisé dynamique montrant le CA par catégorie de produit et par mois, "
+     "dans un nouvel onglet 'Pivot'.",
+     patterns=[r"pivot|crois|pandas"],
+     description="Tableau croisé dynamique sur 5000 transactions",
+     expect_file=True, file_ext=".xlsx")
+
+test("X08", "agent_xlsx_complete", "XLSX",
+     "Voici un rapport de type board pack (X08_source_export_pdf_complexe.xlsx) avec "
+     "17 colonnes de données financières (budget, réalisé, variance, YTD). "
+     "Exporte-le en PDF en mode paysage, adapté à la largeur d'une page A4.",
+     patterns=[r"soffice|pdf|convert|paysage"],
+     description="Export Excel board pack -> PDF paysage",
+     expect_file=True, file_ext=".pdf")
+
+test("X09", "agent_xlsx_complete", "XLSX",
+     "Voici 3 rapports mensuels P&L (X09_rapport_complexe_janvier.xlsx, "
+     "X09_rapport_complexe_fevrier.xlsx, X09_rapport_complexe_mars.xlsx), chacun avec "
+     "un P&L et un détail clients sur plusieurs onglets. Fusionne-les en un seul fichier "
+     "avec un onglet par mois source et un onglet 'Consolidé' qui additionne les valeurs.",
+     patterns=[r"pandas|openpyxl|fusionne|merge|consolid"],
+     description="Fusion de 3 Excel P&L mensuels",
+     expect_file=True, file_ext=".xlsx")
+
+test("X10", "agent_xlsx_complete", "XLSX",
+     "Voici un export CRM sale (X10_donnees_sales_complexes.xlsx, 332 lignes) avec des "
+     "problèmes de qualité : 8 doublons exacts, formats de dates mixtes, casse incohérente "
+     "dans les noms, emails et téléphones incomplets. Nettoie ce fichier : supprime les "
+     "doublons, normalise les noms (casse), corrige les dates, et produis un rapport des "
+     "modifications effectuées.",
+     patterns=[r"pandas|drop_duplicates|netto|clean"],
+     description="Nettoyage et dédoublonnage CRM 332 lignes",
+     expect_file=True, file_ext=".xlsx")
+
+test("X12", "agent_xlsx_complete", "XLSX",
+     "Voici un classeur RH complet (X12_donnees_rh_complexes.xlsx) avec 4 onglets : "
+     "850 collaborateurs, 10200 lignes de paie, et 1200 absences. Fais une analyse complète : "
+     "effectif et masse salariale par département, salaire moyen/médian, et crée des graphiques "
+     "Excel (barres + camembert) dans un onglet 'Dashboard RH'.",
+     patterns=[r"pandas|openpyxl|chart|Dashboard|analyse"],
+     description="Analyse RH 850 employés + Dashboard",
+     expect_file=True, file_ext=".xlsx")
+
+
+# ==========================================
+# PDF Agent — Self-contained tests
 # ==========================================
 
 test("F13", "agent_pdf_complete", "PDF",
@@ -407,7 +809,7 @@ test("F13", "agent_pdf_complete", "PDF",
          r"pdf|PDF|soffice|template|fill_template",
          r"execute_code",
      ],
-     description="Création PDF via DOCX OBA → soffice",
+     description="Création PDF via DOCX OBA -> soffice",
      expect_file=True, file_ext=".pdf")
 
 test("F04", "agent_pdf_complete", "PDF",
@@ -421,7 +823,89 @@ test("F04", "agent_pdf_complete", "PDF",
 
 
 # ==========================================
-# FFmpeg Agent Tests
+# PDF Agent — Tests nécessitant un fichier source
+# ==========================================
+
+test("F01", "agent_pdf_complete", "PDF",
+     "Voici un contrat de service en anglais (service-agreement.pdf, 15 pages). "
+     "Extrais le texte et identifie les clauses principales : durée, montant, "
+     "conditions de résiliation, pénalités. Présente un résumé structuré.",
+     patterns=[r"pdfplumber|extract|clause|texte"],
+     description="Extraction texte contrat PDF 15 pages")
+
+test("F02", "agent_pdf_complete", "PDF",
+     "Voici une facture en PDF (invoice-sample.pdf) contenant des tableaux de lignes "
+     "de facturation avec montants et descriptions. Extrais les tableaux et convertis-les "
+     "en fichier Excel exploitable.",
+     patterns=[r"pdfplumber|extract_table|pandas|Excel"],
+     description="Extraction tableaux facture PDF -> Excel",
+     expect_file=True, file_ext=".xlsx")
+
+test("F03", "agent_pdf_complete", "PDF",
+     "Ce PDF (scan-sample.pdf) est un document scanné (image, pas de texte extractible). "
+     "Extrais le texte par OCR et produis un fichier texte lisible.",
+     patterns=[r"pdf2image|pytesseract|OCR|image_to_string"],
+     description="OCR sur PDF scanné")
+
+test("F05", "agent_pdf_complete", "PDF",
+     "Voici un document de 15 pages (document-15pages.pdf). Extrais les pages 3 à 7 "
+     "dans un fichier séparé 'extrait.pdf'.",
+     patterns=[r"pypdf|PdfReader|PdfWriter|qpdf|pages"],
+     description="Split PDF 15 pages -> extraction pages 3-7",
+     expect_file=True, file_ext=".pdf")
+
+test("F06", "agent_pdf_complete", "PDF",
+     "Voici 3 fichiers PDF à vérifier : corrupted.pdf (1 Ko, probablement corrompu), "
+     "encrypted.pdf (possiblement chiffré), et not_encrypted.pdf (référence normale). "
+     "Vérifie l'intégrité de chacun et répare ceux qui le nécessitent. "
+     "Donne un rapport d'état par fichier.",
+     patterns=[r"qpdf|check|repair|intégrité"],
+     description="Vérification intégrité et réparation 3 PDFs")
+
+test("F07", "agent_pdf_complete", "PDF",
+     "Voici un rapport de 16 pages (document-a-convertir.pdf). Convertis chaque page "
+     "en image PNG haute résolution (300 DPI).",
+     patterns=[r"pdf2image|pdftoppm|convert.*image|300|dpi"],
+     description="Conversion PDF 16 pages -> images PNG 300 DPI",
+     expect_file=True, file_ext=".png")
+
+test("F08", "agent_pdf_complete", "PDF",
+     "Voici une facture PDF (invoice-metadata.pdf, 1 page). Donne-moi toutes les "
+     "métadonnées : auteur, date de création, date de modification, producteur, "
+     "nombre de pages, taille, version PDF, et s'il est chiffré ou non.",
+     patterns=[r"pypdf|PdfReader|metadata|qpdf"],
+     description="Extraction métadonnées PDF facture")
+
+test("F09", "agent_pdf_complete", "PDF",
+     "Ce document PDF (document-pages-retournees.pdf, 15 pages) a certaines pages "
+     "retournées à 180°. Identifie les pages mal orientées et corrige-les.",
+     patterns=[r"pypdf|rotate|rotation"],
+     description="Correction rotation pages PDF")
+
+test("F10", "agent_pdf_complete", "PDF",
+     "Voici un document de 15 pages (document-a-watermarker.pdf). Ajoute un watermark "
+     "'BROUILLON' en diagonale sur toutes les pages, en texte gris semi-transparent.",
+     patterns=[r"reportlab|watermark|merge|Canvas"],
+     description="Ajout watermark BROUILLON sur 15 pages",
+     expect_file=True, file_ext=".pdf")
+
+test("F11", "agent_pdf_complete", "PDF",
+     "Ce PDF (sample-heavy-25mb.pdf) fait plus de 100 Mo. Optimise-le pour réduire "
+     "significativement sa taille tout en conservant le contenu lisible.",
+     patterns=[r"qpdf|compress|optimis|linearize"],
+     description="Compression PDF lourd 100+ Mo",
+     expect_file=True, file_ext=".pdf")
+
+test("F12", "agent_pdf_complete", "PDF",
+     "Ce relevé bancaire (bank-statement-scanned.pdf) est un PDF scanné. Extrais les "
+     "transactions (date, libellé, débit, crédit) par OCR et produis un fichier Excel structuré.",
+     patterns=[r"pdf2image|pytesseract|pandas|OCR|Excel"],
+     description="Pipeline OCR releve bancaire -> Excel",
+     expect_file=True, file_ext=".xlsx")
+
+
+# ==========================================
+# FFmpeg Agent — Self-contained tests
 # ==========================================
 
 test("M05", "agent_quick_edits", "FFmpeg",
@@ -438,7 +922,88 @@ test("M06", "agent_quick_edits", "FFmpeg",
 
 
 # ==========================================
-# DataViz Agent Tests
+# FFmpeg Agent — Tests nécessitant un fichier source
+# ==========================================
+
+test("M01", "agent_quick_edits", "FFmpeg",
+     "Voici une vidéo au format MOV (file_example_MOV_640_800kB.mov, 640px, 778 Ko). "
+     "Convertis-la en MP4 compatible web (H.264 + AAC), résolution 720p max si nécessaire.",
+     patterns=[r"ffmpeg|ffprobe|libx264|aac|720"],
+     description="Conversion MOV 640px -> MP4 H.264",
+     expect_file=True, file_ext=".mp4")
+
+test("M02", "agent_quick_edits", "FFmpeg",
+     "Voici une vidéo MP4 de 10 secondes (sample-10s.mp4, 5 Mo). "
+     "Extrais uniquement la piste audio en MP3 à 192 kbps.",
+     patterns=[r"ffmpeg|-vn|mp3lame|audio"],
+     description="Extraction audio MP3 depuis vidéo 10s",
+     expect_file=True, file_ext=".mp3")
+
+test("M03", "agent_quick_edits", "FFmpeg",
+     "Voici une vidéo de surf en 720p (sample_1280x720_surfing_with_audio.avi, "
+     "AVI, ~3 minutes, 26 Mo). Découpe-la pour garder uniquement la partie de 0:45 à 2:30.",
+     patterns=[r"ffmpeg|-ss|-to|cut|découpe"],
+     description="Découpe AVI surf 0:45 -> 2:30",
+     expect_file=True, file_ext=".mp4")
+
+test("M04", "agent_quick_edits", "FFmpeg",
+     "Voici une vidéo de 10 secondes (sample-10s.mp4). "
+     "Crée un GIF animé à partir des 5 premières secondes, 320px de large, 10 fps.",
+     patterns=[r"ffmpeg|gif|fps|scale"],
+     description="Création GIF depuis vidéo 10s",
+     expect_file=True, file_ext=".gif")
+
+test("M07", "agent_quick_edits", "FFmpeg",
+     "Voici une photo de paysage montagneux (Landscape_big_river_in_mountains.jpg, "
+     "1600x1066 px, 194 Ko). Ajoute en bas un bandeau noir semi-transparent avec "
+     "le texte '© onbehalf.ai 2026' en blanc, centré.",
+     patterns=[r"PIL|Pillow|ImageDraw|texte|bandeau"],
+     description="Ajout bandeau texte sur photo paysage",
+     expect_file=True, file_ext=".jpg")
+
+test("M08", "agent_quick_edits", "FFmpeg",
+     "Voici deux vidéos MP4 : sample-15s.mp4 (15 secondes) et sample-20s.mp4 "
+     "(20 secondes). Assemble-les bout à bout dans cet ordre.",
+     patterns=[r"ffmpeg|concat|assemble|fusion"],
+     description="Concaténation 2 vidéos MP4",
+     expect_file=True, file_ext=".mp4")
+
+test("M09", "agent_quick_edits", "FFmpeg",
+     "Voici une vidéo (sample-10s.mp4, 10 secondes) et un fichier audio "
+     "(sample-12s.mp3, 12 secondes). Ajoute la musique en fond sonore à la vidéo, "
+     "volume musique à 20% par rapport à l'audio original.",
+     patterns=[r"ffmpeg|amix|amerge|volume|audio"],
+     description="Mixage audio 20% sur vidéo",
+     expect_file=True, file_ext=".mp4")
+
+test("M10", "agent_quick_edits", "FFmpeg",
+     "Voici 4 images de 400x300 pixels : sample-boat-400x300.png, "
+     "sample-city-park-400x300.jpg, sample-clouds-400x300.jpg et "
+     "sample-birch-400x300.jpg. Crée une mosaïque 2x2 en les assemblant.",
+     patterns=[r"PIL|Pillow|paste|mosaïque|xstack"],
+     description="Mosaique 2x2 de 4 images 400x300",
+     expect_file=True, file_ext=".png")
+
+test("M11", "agent_quick_edits", "FFmpeg",
+     "Voici une vidéo de surf en 720p (sample_1280x720_surfing_with_audio.avi, ~3 min). "
+     "Extrais une capture d'écran à 1 minute et 23 secondes, en PNG pleine résolution.",
+     patterns=[r"ffmpeg|-ss|frames|capture|screenshot"],
+     description="Extraction frame a 1:23 depuis AVI surf",
+     expect_file=True, file_ext=".png")
+
+test("M12", "agent_quick_edits", "FFmpeg",
+     "Voici 5 images en formats variés : sample-boat-400x300.png, "
+     "sample-city-park-400x300.jpg, sample-clouds-400x300.jpg, "
+     "sample-clouds2-400x300.png et sample-bumblebee-400x300.png. "
+     "Convertis-les toutes en JPEG, 1024px de large max (sans agrandir les plus petites), "
+     "qualité 90%. Renomme-les photo_01.jpg à photo_05.jpg.",
+     patterns=[r"PIL|Pillow|thumbnail|JPEG|convert|batch"],
+     description="Conversion batch 5 images -> JPEG 1024px",
+     expect_file=True, file_ext=".jpg")
+
+
+# ==========================================
+# DataViz Agent — Self-contained tests
 # ==========================================
 
 test("A01", "agent_data_viz", "DataViz",
@@ -460,300 +1025,6 @@ test("A02", "agent_data_viz", "DataViz",
      ],
      description="Dashboard 4 graphiques avec palette OBA",
      expect_file=True, file_ext=".png")
-
-
-# ==========================================
-# DOCX — Tests nécessitant un fichier source
-# (marqués NEEDS_FILE — skippés si pas de fichier)
-# ==========================================
-
-test("D01", "agent_docx_complete", "DOCX",
-     "[NEEDS_FILE:docx_cr_template] Voici un exemple de CR. Analyse sa structure puis produis un nouveau CR : "
-     "Réunion produit du 14 avril 2026. Participants : Marie, Jean, Sophie. "
-     "Décision : lancement V2 le 15 juin. Action : Jean prépare le plan média avant le 1er mai.",
-     patterns=[r"unpack|lxml|template|analyse"],
-     description="[NEEDS_FILE] Reproduire un CR depuis template utilisateur")
-
-test("D03", "agent_docx_complete", "DOCX",
-     "Accepte tous les tracked changes de ce document et produis la version finale propre.",
-     patterns=[r"accept_changes|accept|tracked"],
-     description="[NEEDS_FILE:docx_tracked] Accepter tracked changes → version propre")
-
-test("D04", "agent_docx_complete", "DOCX",
-     "Relis ce document et ajoute un commentaire Word sur le paragraphe 'Délais de livraison' : "
-     "'À vérifier avec la logistique'.",
-     patterns=[r"comment|commentaire|unpack"],
-     description="[NEEDS_FILE:docx_proposal] Ajouter commentaires de relecture")
-
-test("D06", "agent_docx_complete", "DOCX",
-     "Fusionne ces deux documents Word en un seul, avec un saut de page entre eux.",
-     patterns=[r"fusionne|merge|docxcompose|page_break"],
-     description="[NEEDS_FILE:2x_docx] Fusion de deux DOCX")
-
-test("D07", "agent_docx_complete", "DOCX",
-     "Analyse ce document Word : liste des sections, nombre de tableaux, nombre d'images, "
-     "et les 3 premiers paragraphes.",
-     patterns=[r"unpack|pandoc|python-docx|analyse|section"],
-     description="[NEEDS_FILE:docx_complex] Extraction contenu structuré")
-
-test("D09", "agent_docx_complete", "DOCX",
-     "Ce fichier est dans l'ancien format Word .doc. Convertis-le en .docx moderne.",
-     patterns=[r"soffice|convert.*docx"],
-     description="[NEEDS_FILE:doc_legacy] Conversion .doc → .docx")
-
-test("D11", "agent_docx_complete", "DOCX",
-     "Dans ce document, seule la première occurrence de 'Directeur' doit être remplacée par 'Directrice' "
-     "en tracked changes.",
-     patterns=[r"tracked.replace|--first|first"],
-     description="[NEEDS_FILE:docx_directeur] Remplacement ciblé --first")
-
-test("D12", "agent_docx_complete", "DOCX",
-     "Remplis ce template de lettre avec : consultant=Marie Dupont, client=Société ABC, "
-     "date=1er mai 2026, durée=6 mois, tarif=850€ HT. Puis remplace 'les conditions définies' par "
-     "'les conditions révisées du contrat-cadre' en tracked changes. Exporte en PDF.",
-     patterns=[r"unpack|tracked|soffice|pdf"],
-     description="[NEEDS_FILE:docx_lettre] Pipeline complet template→tracked→PDF")
-
-
-# ==========================================
-# PPTX — Tests supplémentaires
-# ==========================================
-
-test("P02", "agent_pptx_complete", "PPTX",
-     "Remplace le titre du slide 1 par 'Bilan annuel 2025' et le sous-titre par 'Direction Commerciale'.",
-     patterns=[r"unpack|xml|edit|slide"],
-     description="[NEEDS_FILE:pptx_corporate] Édition template PPTX")
-
-test("P03", "agent_pptx_complete", "PPTX",
-     "Analyse ce template PowerPoint : montre-moi un aperçu visuel de tous les layouts.",
-     patterns=[r"thumbnail|layout|aperçu|analyse"],
-     description="[NEEDS_FILE:pptx_template] Analyse template avec thumbnails")
-
-test("P04", "agent_pptx_complete", "PPTX",
-     "Duplique le slide 3 de cette présentation 3 fois pour avoir 4 copies au total.",
-     patterns=[r"add_slide|dupli|copie"],
-     description="[NEEDS_FILE:pptx_casestudy] Duplication de slides")
-
-test("P05", "agent_pptx_complete", "PPTX",
-     "Nettoie ce fichier PowerPoint : supprime les slides masqués et les médias non référencés.",
-     patterns=[r"clean|nettoie|orphan"],
-     description="[NEEDS_FILE:pptx_heavy] Nettoyage PPTX volumineux")
-
-test("P06", "agent_pptx_complete", "PPTX",
-     "Convertis cette présentation en PDF.",
-     patterns=[r"soffice|pdf|convert"],
-     description="[NEEDS_FILE:pptx_any] Conversion PPTX → PDF")
-
-test("P07", "agent_pptx_complete", "PPTX",
-     "Extrais le contenu textuel de cette présentation slide par slide en markdown.",
-     patterns=[r"markitdown|markdown|extract"],
-     description="[NEEDS_FILE:pptx_formation] Extraction contenu en markdown")
-
-test("P09", "agent_pptx_complete", "PPTX",
-     "Ajoute un nouveau slide à la fin en utilisant le 2ème layout disponible. "
-     "Titre : 'Prochaines étapes', contenu : 'Valider le budget', 'Recruter 2 devs', 'Lancer V2'.",
-     patterns=[r"add_slide|layout|unpack"],
-     description="[NEEDS_FILE:pptx_layouts] Ajout slide depuis layout")
-
-test("P10", "agent_pptx_complete", "PPTX",
-     "Remplace toutes les occurrences de 'Acme Corp' par 'GlobalTech SA' dans tous les slides.",
-     patterns=[r"replace|remplac|unpack|xml"],
-     description="[NEEDS_FILE:pptx_acme] Remplacement texte dans toute la présentation")
-
-test("P11", "agent_pptx_complete", "PPTX",
-     "Crée une mini-présentation de 3 slides : (1) Titre 'Résultats T1', "
-     "(2) Barres ventes par région, (3) Camembert répartition charges.",
-     patterns=[r"pptxgenjs|pptxgen|chart|addChart"],
-     description="Création PPTX avec graphiques",
-     expect_file=True, file_ext=".pptx")
-
-test("P12", "agent_pptx_complete", "PPTX",
-     "Analyse ce template corporate puis crée 3 slides dans le même style : "
-     "'Objectifs 2026' avec bullets, 'Budget' avec un tableau, 'Calendrier'. Exporte en PDF.",
-     patterns=[r"thumbnail|analyse|add_slide|soffice|pdf"],
-     description="[NEEDS_FILE:pptx_corporate2] Pipeline analyse→création→export")
-
-
-# ==========================================
-# XLSX — Tests supplémentaires
-# ==========================================
-
-test("X02", "agent_xlsx_complete", "XLSX",
-     "Analyse ce fichier Excel : nombre de lignes/colonnes, types de données, valeurs manquantes, "
-     "top 5 clients par CA.",
-     patterns=[r"pandas|read_excel|describe|info|groupby"],
-     description="[NEEDS_FILE:xlsx_commercial] Analyse Excel existant")
-
-test("X04", "agent_xlsx_complete", "XLSX",
-     "Ajoute un graphique en barres montrant l'évolution des ventes mensuelles dans un nouvel onglet Dashboard.",
-     patterns=[r"openpyxl|BarChart|chart|Dashboard"],
-     description="[NEEDS_FILE:xlsx_ventes] Graphique dans Excel")
-
-test("X05", "agent_xlsx_complete", "XLSX",
-     "Convertis ce fichier .xls en .xlsx moderne sans perdre les données.",
-     patterns=[r"soffice|convert.*xlsx"],
-     description="[NEEDS_FILE:xls_legacy] Conversion XLS → XLSX")
-
-test("X06", "agent_xlsx_complete", "XLSX",
-     "Crée un tableau croisé dynamique montrant le CA par catégorie et par mois.",
-     patterns=[r"pivot|crois|pandas"],
-     description="[NEEDS_FILE:xlsx_transactions] Tableau croisé dynamique")
-
-test("X07", "agent_xlsx_complete", "XLSX",
-     "Crée un fichier Excel de suivi des objectifs avec 10 vendeurs : vert si résultat >= objectif, "
-     "orange entre 80-100%, rouge si < 80%.",
-     patterns=[r"openpyxl|Conditional|mise.en.forme|couleur"],
-     description="Mise en forme conditionnelle",
-     expect_file=True, file_ext=".xlsx")
-
-test("X08", "agent_xlsx_complete", "XLSX",
-     "Exporte ce fichier Excel en PDF en paysage.",
-     patterns=[r"soffice|pdf|convert|paysage"],
-     description="[NEEDS_FILE:xlsx_any] Export Excel → PDF")
-
-test("X09", "agent_xlsx_complete", "XLSX",
-     "Fusionne ces 3 fichiers Excel en un seul avec un onglet par fichier et un onglet Consolidé.",
-     patterns=[r"pandas|openpyxl|fusionne|merge|consolid"],
-     description="[NEEDS_FILE:3x_xlsx] Fusion de plusieurs Excel")
-
-test("X10", "agent_xlsx_complete", "XLSX",
-     "Nettoie ce fichier : supprime les doublons, normalise les noms, corrige les dates.",
-     patterns=[r"pandas|drop_duplicates|nettoie|clean"],
-     description="[NEEDS_FILE:xlsx_dirty] Nettoyage et dédoublonnage")
-
-test("X11", "agent_xlsx_complete", "XLSX",
-     "Crée un modèle de prévision de trésorerie sur 12 mois : solde initial 50k€, "
-     "encaissements croissants +5%/mois depuis 20k€, décaissements fixes 18k€. "
-     "Formules Excel natives, négatifs en rouge.",
-     patterns=[r"openpyxl|formul|=SUM|trésorerie|prévision"],
-     description="Modèle financier avec formules complexes",
-     expect_file=True, file_ext=".xlsx")
-
-test("X12", "agent_xlsx_complete", "XLSX",
-     "Analyse ce fichier RH : effectif et masse salariale par département, "
-     "salaire moyen/médian, graphiques barres + camembert dans un onglet Dashboard.",
-     patterns=[r"pandas|openpyxl|chart|Dashboard|analyse"],
-     description="[NEEDS_FILE:xlsx_rh] Analyse + viz + export complet")
-
-
-# ==========================================
-# PDF — Tests supplémentaires
-# ==========================================
-
-test("F01", "agent_pdf_complete", "PDF",
-     "Extrais le texte de ce contrat et identifie les clauses : durée, montant, résiliation, pénalités.",
-     patterns=[r"pdfplumber|extract|clause|texte"],
-     description="[NEEDS_FILE:pdf_contrat] Extraction texte contrat")
-
-test("F02", "agent_pdf_complete", "PDF",
-     "Extrais les tableaux de ce PDF et convertis-les en Excel.",
-     patterns=[r"pdfplumber|extract_table|pandas|Excel"],
-     description="[NEEDS_FILE:pdf_tableaux] Extraction tableaux → Excel")
-
-test("F03", "agent_pdf_complete", "PDF",
-     "Ce PDF est un scan. Extrais le texte par OCR.",
-     patterns=[r"pdf2image|pytesseract|OCR|image_to_string"],
-     description="[NEEDS_FILE:pdf_scan] OCR PDF scanné")
-
-test("F05", "agent_pdf_complete", "PDF",
-     "Extrais les pages 3 à 7 de ce PDF dans un fichier séparé.",
-     patterns=[r"pypdf|PdfReader|PdfWriter|qpdf|pages"],
-     description="[NEEDS_FILE:pdf_10pages] Split PDF par pages")
-
-test("F06", "agent_pdf_complete", "PDF",
-     "Vérifie l'intégrité de ce PDF et répare-le si nécessaire.",
-     patterns=[r"qpdf|check|repair|intégrité"],
-     description="[NEEDS_FILE:pdf_corrupt] Vérification et réparation")
-
-test("F07", "agent_pdf_complete", "PDF",
-     "Convertis chaque page de ce PDF en image PNG haute résolution (300 DPI).",
-     patterns=[r"pdf2image|pdftoppm|convert.*image|300|dpi"],
-     description="[NEEDS_FILE:pdf_any] Conversion PDF → images HR")
-
-test("F08", "agent_pdf_complete", "PDF",
-     "Donne-moi toutes les métadonnées de ce PDF : auteur, date, nombre de pages, chiffrement.",
-     patterns=[r"pypdf|PdfReader|metadata|qpdf"],
-     description="[NEEDS_FILE:pdf_any2] Extraction métadonnées")
-
-test("F09", "agent_pdf_complete", "PDF",
-     "Les pages 2 et 5 de ce PDF sont à l'envers. Corrige-les.",
-     patterns=[r"pypdf|rotate|rotation"],
-     description="[NEEDS_FILE:pdf_rotated] Rotation de pages")
-
-test("F10", "agent_pdf_complete", "PDF",
-     "Ajoute un watermark 'BROUILLON' en diagonale sur toutes les pages de ce PDF.",
-     patterns=[r"reportlab|watermark|merge|Canvas"],
-     description="[NEEDS_FILE:pdf_any3] Ajout watermark")
-
-test("F11", "agent_pdf_complete", "PDF",
-     "Optimise ce PDF de 25 Mo pour réduire sa taille.",
-     patterns=[r"qpdf|compress|optimis|linearize"],
-     description="[NEEDS_FILE:pdf_heavy] Compression PDF")
-
-test("F12", "agent_pdf_complete", "PDF",
-     "Ce relevé bancaire est un scan. Extrais les transactions (date, libellé, débit, crédit) en Excel.",
-     patterns=[r"pdf2image|pytesseract|pandas|OCR|Excel"],
-     description="[NEEDS_FILE:pdf_scan_table] Pipeline OCR → tableaux → Excel")
-
-
-# ==========================================
-# FFmpeg — Tests supplémentaires
-# ==========================================
-
-test("M01", "agent_quick_edits", "FFmpeg",
-     "Convertis cette vidéo en MP4 H.264+AAC, résolution 720p max.",
-     patterns=[r"ffmpeg|ffprobe|libx264|aac|720"],
-     description="[NEEDS_FILE:video_mov] Conversion vidéo MP4")
-
-test("M02", "agent_quick_edits", "FFmpeg",
-     "Extrais uniquement la piste audio de cette vidéo en MP3 192 kbps.",
-     patterns=[r"ffmpeg|-vn|mp3lame|audio"],
-     description="[NEEDS_FILE:video_any] Extraction audio")
-
-test("M03", "agent_quick_edits", "FFmpeg",
-     "Découpe cette vidéo pour garder uniquement la partie de 0:45 à 2:30.",
-     patterns=[r"ffmpeg|-ss|-to|cut|découpe"],
-     description="[NEEDS_FILE:video_any2] Découpe vidéo")
-
-test("M04", "agent_quick_edits", "FFmpeg",
-     "Crée un GIF animé à partir des 5 premières secondes de cette vidéo, 320px, 10fps.",
-     patterns=[r"ffmpeg|gif|fps|scale"],
-     description="[NEEDS_FILE:video_short] Création GIF animé")
-
-test("M07", "agent_quick_edits", "FFmpeg",
-     "Ajoute un bandeau noir en bas de cette image avec le texte '© onbehalf.ai 2026' en blanc.",
-     patterns=[r"PIL|Pillow|ImageDraw|texte|bandeau"],
-     description="[NEEDS_FILE:image_any] Ajout texte sur image")
-
-test("M08", "agent_quick_edits", "FFmpeg",
-     "Assemble ces vidéos bout à bout dans l'ordre.",
-     patterns=[r"ffmpeg|concat|assemble|fusion"],
-     description="[NEEDS_FILE:2x_video] Concaténation vidéos")
-
-test("M09", "agent_quick_edits", "FFmpeg",
-     "Ajoute cette musique en fond sonore à la vidéo, volume musique à 20%.",
-     patterns=[r"ffmpeg|amix|amerge|volume|audio"],
-     description="[NEEDS_FILE:video+audio] Ajout musique de fond")
-
-test("M10", "agent_quick_edits", "FFmpeg",
-     "Crée une mosaïque 2x2 à partir de ces 4 images.",
-     patterns=[r"PIL|Pillow|paste|mosaïque|xstack"],
-     description="[NEEDS_FILE:4x_image] Mosaïque d'images")
-
-test("M11", "agent_quick_edits", "FFmpeg",
-     "Extrais une capture d'écran de cette vidéo à 1 minute 23 secondes, en PNG pleine résolution.",
-     patterns=[r"ffmpeg|-ss|frames|capture|screenshot"],
-     description="[NEEDS_FILE:video_any3] Extraction frame spécifique")
-
-test("M12", "agent_quick_edits", "FFmpeg",
-     "Convertis toutes ces images en JPEG 1024px max, qualité 90%, nommées photo_01.jpg etc.",
-     patterns=[r"PIL|Pillow|thumbnail|JPEG|convert|batch"],
-     description="[NEEDS_FILE:multi_image] Conversion batch d'images")
-
-
-# ==========================================
-# DataViz — Tests supplémentaires
-# ==========================================
 
 test("A03", "agent_data_viz", "DataViz",
      "Génère des données de satisfaction client par canal (boutique, web, téléphone, 50 par canal). "
@@ -827,11 +1098,33 @@ test("A12", "agent_data_viz", "DataViz",
      "Génère un CSV de données sales (100 lignes, doublons, valeurs manquantes, types incohérents). "
      "Pipeline complet : charge, nettoie, analyse, 3 visualisations, export Excel avec images intégrées.",
      patterns=[r"pandas|matplotlib|openpyxl|pipeline|nettoie|clean"],
-     description="Pipeline complet données → analyse → viz → export",
+     description="Pipeline complet données -> analyse -> viz -> export",
      expect_file=True, file_ext=".xlsx")
 
 
 # === Test Runner ===
+
+def upload_files_for_test(test_case: TestCase) -> list:
+    """Upload input files for a test. Returns list of file_ids (may be empty)."""
+    file_ids = []
+    file_rel_paths = TEST_INPUT_FILES.get(test_case.test_id, [])
+    if not file_rel_paths:
+        return file_ids
+
+    for rel_path in file_rel_paths:
+        file_path = TEST_FILES_DIR / rel_path
+        if not file_path.exists():
+            print(f"    WARNING: Input file missing: {file_path}")
+            continue
+        file_id = upload_file(file_path)
+        if file_id:
+            file_ids.append(file_id)
+            print(f"    Uploaded: {file_path.name} -> {file_id[:16]}...")
+        else:
+            print(f"    INFO: File upload skipped (no JWT): {file_path.name}")
+
+    return file_ids
+
 
 def run_test(test_case: TestCase) -> TestResult:
     """Run a single test and return the result."""
@@ -843,10 +1136,15 @@ def run_test(test_case: TestCase) -> TestResult:
 
     start = time.time()
     try:
+        # Upload files if needed
+        file_ids = upload_files_for_test(test_case)
+        result.files_uploaded = file_ids
+
         response = call_agent(
             test_case.agent_id,
             test_case.prompt,
-            test_case.previous_response_id,
+            file_ids=file_ids if file_ids else None,
+            previous_response_id=test_case.previous_response_id,
         )
         result.duration = time.time() - start
 
@@ -943,7 +1241,6 @@ def generate_sample_files():
                 results.append((test_id, "NO_FILES", stdout.strip()[:60]))
                 continue
 
-            # Download each file
             downloaded = []
             for f in files:
                 file_id = f.get("id", "")
@@ -963,14 +1260,12 @@ def generate_sample_files():
             print(f"EXCEPTION: {e}")
             results.append((test_id, "EXCEPTION", str(e)))
 
-    # Summary
     ok_count = sum(1 for _, s, _ in results if s == "OK")
     print(f"\n{'='*60}")
     print(f"Generated: {ok_count}/{len(results)} files")
     print(f"Files saved in: {FILES_DIR.absolute()}/")
     print(f"{'='*60}")
 
-    # List generated files
     if FILES_DIR.exists():
         for f in sorted(FILES_DIR.iterdir()):
             if f.is_file():
@@ -983,29 +1278,53 @@ def main():
     parser.add_argument("--agent", help="Run all tests for an agent (docx, pptx, xlsx, pdf, ffmpeg, dataviz)")
     parser.add_argument("--list", action="store_true", help="List all available tests")
     parser.add_argument("--key", help="Agent API key (overrides AGENT_API_KEY env var)")
+    parser.add_argument("--jwt-token", help="LibreChat JWT token for file uploads")
+    parser.add_argument("--no-file", action="store_true",
+                        help="Skip tests that need input files (run self-contained only)")
+    parser.add_argument("--only-file", action="store_true",
+                        help="Run ONLY tests that need input files")
     parser.add_argument("--generate-files", action="store_true",
-                        help="Generate sample files via code-interpreter (bypasses LLM, tests pipelines)")
+                        help="Generate sample files via code-interpreter (bypasses LLM)")
     args = parser.parse_args()
 
-    global API_KEY
+    global API_KEY, JWT_TOKEN
     if args.key:
         API_KEY = args.key
+    if args.jwt_token:
+        JWT_TOKEN = args.jwt_token
     if not API_KEY:
-        env_path = Path(__file__).parent.parent / ".env"
-        if env_path.exists():
-            for line in env_path.read_text().splitlines():
-                if line.startswith("AGENT_API_KEY="):
-                    API_KEY = line.split("=", 1)[1].strip()
+        # Try .agent-api-key file
+        key_file = Path(__file__).parent.parent / ".agent-api-key"
+        if key_file.exists():
+            API_KEY = key_file.read_text().strip()
         if not API_KEY:
-            print("ERROR: Set AGENT_API_KEY env var or pass --key")
+            # Try .env
+            env_path = Path(__file__).parent.parent / ".env"
+            if env_path.exists():
+                for line in env_path.read_text().splitlines():
+                    if line.startswith("AGENT_API_KEY="):
+                        API_KEY = line.split("=", 1)[1].strip()
+        if not API_KEY:
+            print("ERROR: Set AGENT_API_KEY env var, pass --key, or put key in .agent-api-key")
             sys.exit(1)
 
     if args.list:
-        print(f"Available tests ({len(TESTS)}):\n")
+        total = len(TESTS)
+        needs_file_count = sum(1 for t in TESTS if t.needs_file)
+        self_contained = total - needs_file_count
+        print(f"Available tests ({total} total: {self_contained} self-contained, "
+              f"{needs_file_count} need files):\n")
         for t in TESTS:
-            has_gen = " [GEN]" if t.test_id in FILE_GENERATION_SCRIPTS else ""
-            print(f"  {t.test_id:6s} [{t.agent_name:8s}] {t.description}{has_gen}")
-        print(f"\n[GEN] = has file generation script (usable with --generate-files)")
+            tags = []
+            if t.test_id in FILE_GENERATION_SCRIPTS:
+                tags.append("GEN")
+            if t.needs_file:
+                n_files = len(TEST_INPUT_FILES.get(t.test_id, []))
+                tags.append(f"FILE:{n_files}")
+            tag_str = f" [{','.join(tags)}]" if tags else ""
+            print(f"  {t.test_id:6s} [{t.agent_name:8s}] {t.description}{tag_str}")
+        print(f"\n[GEN] = has file generation script (--generate-files)")
+        print(f"[FILE:N] = needs N input file(s) from docs/Test_files/")
         return
 
     if args.generate_files:
@@ -1024,19 +1343,42 @@ def main():
         agent_name = agent_map.get(args.agent.lower(), args.agent)
         tests_to_run = [t for t in TESTS if t.agent_name == agent_name]
 
+    # Apply file filter
+    if args.no_file:
+        tests_to_run = [t for t in tests_to_run if not t.needs_file]
+    elif args.only_file:
+        tests_to_run = [t for t in tests_to_run if t.needs_file]
+
     if not tests_to_run:
         print("No tests matched. Use --list to see available tests.")
         sys.exit(1)
+
+    # Check file availability
+    needs_file_tests = [t for t in tests_to_run if t.needs_file]
+    if needs_file_tests:
+        missing = 0
+        for t in needs_file_tests:
+            for rel_path in TEST_INPUT_FILES.get(t.test_id, []):
+                if not (TEST_FILES_DIR / rel_path).exists():
+                    missing += 1
+        if missing > 0:
+            print(f"WARNING: {missing} input file(s) missing from {TEST_FILES_DIR}/")
+        if not JWT_TOKEN:
+            print(f"INFO: No JWT token — file uploads disabled (methodology-only mode)")
+            print(f"      Set LIBRECHAT_JWT or pass --jwt-token to enable file uploads")
 
     # Run tests
     print(f"\n{'='*60}")
     print(f"Running {len(tests_to_run)} agent tests")
     print(f"API: {API_BASE}")
+    if JWT_TOKEN:
+        print(f"File upload: enabled")
     print(f"{'='*60}\n")
 
     results = []
     for test_case in tests_to_run:
-        print(f"  Running {test_case.test_id} ({test_case.description})...")
+        file_tag = " [FILE]" if test_case.needs_file else ""
+        print(f"  Running {test_case.test_id}{file_tag} ({test_case.description})...")
         result = run_test(test_case)
         results.append(result)
         print_result(result)
@@ -1046,6 +1388,7 @@ def main():
     passed = sum(1 for r in results if r.status == "PASS")
     failed = sum(1 for r in results if r.status == "FAIL")
     errors = sum(1 for r in results if r.status == "ERROR")
+    skipped = sum(1 for r in results if r.status == "SKIP")
     total_time = sum(r.duration for r in results)
 
     print(f"{'='*60}")
@@ -1063,7 +1406,9 @@ def main():
         "passed": passed,
         "failed": failed,
         "errors": errors,
+        "skipped": skipped,
         "duration": total_time,
+        "file_upload": "enabled" if JWT_TOKEN else "disabled",
         "results": [
             {
                 "test_id": r.test_id,
@@ -1071,6 +1416,7 @@ def main():
                 "status": r.status,
                 "duration": r.duration,
                 "error": r.error,
+                "files_uploaded": len(r.files_uploaded),
                 "methodology_checks": r.methodology_checks,
                 "response_preview": r.response_text[:200],
             }
