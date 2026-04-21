@@ -54,6 +54,9 @@ python3 $SKILLS_ROOT/docx/scripts/fill_cr_template.py <template-cr.docx> <output
 # CRÉATION de courrier / lettre depuis template
 python3 $SKILLS_ROOT/docx/scripts/fill_courrier_template.py <template-courrier.docx> <output.docx> <config.json>
 
+# CRÉATION de note interne / mémo depuis template
+python3 $SKILLS_ROOT/docx/scripts/fill_note_template.py <template-note-interne.docx> <output.docx> <config.json>
+
 # CRÉATION de contrat / NDA / réponse AO depuis template (générique)
 python3 $SKILLS_ROOT/docx/scripts/fill_contrat_template.py <template.docx> <output.docx> <config.json>
 
@@ -103,6 +106,7 @@ $SKILLS_ROOT/docx/templates/onbehalfai/
 ├── template-contrat-apport.docx    # Contrat d'apport d'affaires (12 articles)
 ├── template-nda.docx               # Accord de confidentialité / NDA (6 articles)
 ├── template-reponse-ao.docx        # Réponse à appel d'offres (executive summary + proposition technique + financière)
+├── template-note-interne.docx      # Note interne / mémo (header OBA, De/À/Cc/Date/Objet, corps, signature)
 ├── reference-pandoc.docx           # Reference doc pandoc (styles/polices seulement — PAS de cover page ni logo)
 ├── heading-unnumbered-v4.lua       # Filtre Lua pour titres non-numérotés (pandoc)
 ├── logo-onbehalfai.png             # Logo On Behalf AI (PNG)
@@ -435,6 +439,7 @@ subprocess.run(["python3", "/opt/skills/docx/scripts/office/validate.py", "outpu
 | **Contrat d'apport d'affaires** | `template-contrat-apport.docx` | `fill_contrat_template.py` |
 | **NDA / Accord de confidentialité** | `template-nda.docx` | `fill_contrat_template.py` |
 | **Réponse à appel d'offres** | `template-reponse-ao.docx` | `fill_contrat_template.py` |
+| **Note interne / Mémo** | `template-note-interne.docx` | `fill_note_template.py` |
 
 **IMPORTANT** : pandoc + inject_cover.py ne produit QUE des documents de type guide/rapport (cover page + table version). Il ne produit PAS de comptes-rendus. Pour un CR, même si l'input est un markdown décrivant une réunion, utiliser `fill_cr_template.py` car seul ce script gère :
 - Le header spécifique CR (titre + client/objet)
