@@ -54,6 +54,9 @@ python3 $SKILLS_ROOT/docx/scripts/fill_cr_template.py <template-cr.docx> <output
 # CRÉATION de courrier / lettre depuis template
 python3 $SKILLS_ROOT/docx/scripts/fill_courrier_template.py <template-courrier.docx> <output.docx> <config.json>
 
+# CRÉATION de contrat / NDA / réponse AO depuis template (générique)
+python3 $SKILLS_ROOT/docx/scripts/fill_contrat_template.py <template.docx> <output.docx> <config.json>
+
 # POST-PROCESSING : injecter cover page OBA dans un DOCX pandoc
 python3 $SKILLS_ROOT/docx/scripts/inject_cover.py <input.docx> <output.docx> --title "..." [--subtitle "..."] [--author "..."] [--date "..."]
 
@@ -96,6 +99,10 @@ $SKILLS_ROOT/docx/templates/onbehalfai/
 ├── template-base.docx              # Guides, docs techniques, rapports (cover page + version table + logo)
 ├── template-compte-rendu.docx      # Comptes-rendus de réunion (header + métadonnées + participants)
 ├── template-courrier.docx          # Courriers / lettres (en-tête OBA, destinataire, corps, signature)
+├── template-contrat-services.docx  # Contrat de services (CG + CP Formations + CP Dev-Intégration)
+├── template-contrat-apport.docx    # Contrat d'apport d'affaires (12 articles)
+├── template-nda.docx               # Accord de confidentialité / NDA (6 articles)
+├── template-reponse-ao.docx        # Réponse à appel d'offres (executive summary + proposition technique + financière)
 ├── reference-pandoc.docx           # Reference doc pandoc (styles/polices seulement — PAS de cover page ni logo)
 ├── heading-unnumbered-v4.lua       # Filtre Lua pour titres non-numérotés (pandoc)
 ├── logo-onbehalfai.png             # Logo On Behalf AI (PNG)
@@ -348,6 +355,53 @@ subprocess.run([
 
 Le champ `body` est une liste de paragraphes (strings). Chaque string supporte `**gras**` inline.
 
+### Workflow de création : Contrat / NDA / Réponse AO
+
+Pour les documents juridiques et commerciaux, utiliser `fill_contrat_template.py` avec le template approprié :
+
+```python
+import subprocess, json, os
+os.chdir('/mnt/data')
+
+# Choisir le bon template selon le type :
+# - Contrat de services : template-contrat-services.docx
+# - Contrat d'apport d'affaires : template-contrat-apport.docx
+# - NDA : template-nda.docx
+# - Réponse AO : template-reponse-ao.docx
+
+config = {
+    "placeholders": {
+        "[Nom du Client]": "Société XYZ",
+        "[Forme juridique]": "SAS",
+        "[Adresse complète]": "45 avenue des Champs-Élysées, 75008 Paris",
+        "[Numéro de SIRET]": "987 654 321 00042",
+        "[Nom du représentant]": "Mme Sophie Martin",
+        "[Montant en euros]": "50 000"
+    }
+}
+
+with open("/tmp/config.json", "w") as f:
+    json.dump(config, f, ensure_ascii=False)
+
+subprocess.run([
+    "python3", "/opt/skills/docx/scripts/fill_contrat_template.py",
+    "/opt/skills/docx/templates/onbehalfai/template-contrat-services.docx",
+    "contrat.docx",
+    "/tmp/config.json"
+], check=True)
+```
+
+**Placeholders par template** :
+
+| Template | Placeholders principaux |
+|----------|------------------------|
+| `template-contrat-services.docx` | `[Nom du Client]`, `[Forme juridique]`, `[Montant en euros]`, `[Adresse complète]`, `[Numéro de SIRET]`, `[Nom du représentant]` |
+| `template-contrat-apport.docx` | `[Partenaire]`, `[PARTENAIRE]`, `[site_partenaire]` |
+| `template-nda.docx` | `[Nom du Client]`, `[CLIENT]` |
+| `template-reponse-ao.docx` | `[Client]`, `[Objet de l'Appel d'Offres]`, `[Date AO]`, `[Date Réponse]` |
+
+Le champ optionnel `"sections"` permet d'ajouter du contenu structuré (texte, listes, tableaux) avant le bloc de signature.
+
 ### Workflow alternatif (unpack/edit/pack manuel)
 
 Si `fill_template.py` ne couvre pas un besoin spécifique (ex: insertion de tableaux, images), utiliser le pipeline manuel avec lxml (jamais de string replace sur le XML) :
@@ -374,9 +428,13 @@ subprocess.run(["python3", "/opt/skills/docx/scripts/office/validate.py", "outpu
 
 | Type de document | Template | Méthode de création |
 |------------------|----------|---------------------|
-| **Compte-rendu de réunion** | `template-compte-rendu.docx` | `fill_cr_template.py` uniquement |
-| **Guide, doc technique, rapport, proposition** | `template-base.docx` | pandoc + inject_cover (si markdown) OU fill_template.py (si généré) |
+| **Guide, doc technique, rapport** | `template-base.docx` | pandoc + inject_cover (si markdown) OU fill_template.py (si généré) |
+| **Compte-rendu de réunion** | `template-compte-rendu.docx` | `fill_cr_template.py` |
 | **Courrier / lettre** | `template-courrier.docx` | `fill_courrier_template.py` |
+| **Contrat de services** | `template-contrat-services.docx` | `fill_contrat_template.py` |
+| **Contrat d'apport d'affaires** | `template-contrat-apport.docx` | `fill_contrat_template.py` |
+| **NDA / Accord de confidentialité** | `template-nda.docx` | `fill_contrat_template.py` |
+| **Réponse à appel d'offres** | `template-reponse-ao.docx` | `fill_contrat_template.py` |
 
 **IMPORTANT** : pandoc + inject_cover.py ne produit QUE des documents de type guide/rapport (cover page + table version). Il ne produit PAS de comptes-rendus. Pour un CR, même si l'input est un markdown décrivant une réunion, utiliser `fill_cr_template.py` car seul ce script gère :
 - Le header spécifique CR (titre + client/objet)
