@@ -13,7 +13,7 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 - **Auteur** : pour les tracked changes et métadonnées, l'agent doit utiliser le nom réel de l'utilisateur LibreChat (via `{{current_user}}`)
 - **pack.py** : syntaxe positionnelle `pack.py <dir/> <output.docx>` (pas de flag `-o`)
 - **Fichiers temporaires** : écrits dans `/tmp/`, pas `/mnt/data/` (seuls les fichiers de sortie vont dans `/mnt/data/`)
-- **Palette OBA** : quand l'utilisateur ne fournit pas de charte, utiliser les couleurs On Behalf AI
+- **Palette corporate** : quand l'utilisateur ne fournit pas de charte, utiliser les couleurs Acme Corp
 
 ---
 
@@ -42,25 +42,25 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 
 ---
 
-### D01b — Créer un CR depuis le template OBA (sans template utilisateur)
+### D01b — Créer un CR depuis le template corporate (sans template utilisateur)
 
 **Prérequis** : aucun fichier uploadé
 
 **Prompt** :
-> Crée un compte-rendu de la réunion suivante : "Réunion du 10 avril 2026, visioconférence Teams, organisée par Damien Juillard. Participants : Sophie Martin (Directrice RH, Nextera Corp) et Damien Juillard (Consultant IA, On Behalf AI). Sujet : cadrage projet IA RH. Décisions : lancement POC chatbot RH. Actions : étude faisabilité avant le 24 avril."
+> Crée un compte-rendu de la réunion suivante : "Réunion du 10 avril 2026, visioconférence Teams, organisée par Jane Doe. Participants : Sophie Martin (Directrice RH, Nextera Corp) et Jane Doe (Consultant IA, Acme Corp). Sujet : cadrage projet IA RH. Décisions : lancement POC chatbot RH. Actions : étude faisabilité avant le 24 avril."
 
 **Méthodologie attendue** :
-1. `fill_cr_template.py` avec le template OBA `template-compte-rendu.docx`
+1. `fill_cr_template.py` avec le template corporate `template-compte-rendu.docx`
 2. Config JSON avec `meeting` (title, date, location, organizer) + `participants` + `sections`
 3. Le config.json écrit dans `/tmp/` (pas `/mnt/data/`)
 
-**Validation utilisateur** : DOCX avec page de garde OBA (logo, titre, métadonnées), tableau participants rempli, sections structurées.
+**Validation utilisateur** : DOCX avec page de garde corporate (logo, titre, métadonnées), tableau participants rempli, sections structurées.
 
 **Validation technique** : vérifier que `fill_cr_template.py` est appelé (pas de manipulation XML manuelle).
 
 ---
 
-### D01c — Créer un document technique depuis le template OBA
+### D01c — Créer un document technique depuis le template corporate
 
 **Prérequis** : aucun fichier uploadé
 
@@ -68,11 +68,11 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 > Crée un guide d'installation pour Docker sur Ubuntu, avec prérequis, étapes d'installation, configuration, et dépannage.
 
 **Méthodologie attendue** :
-1. `fill_template.py` avec le template OBA `template-base.docx`
+1. `fill_template.py` avec le template corporate `template-base.docx`
 2. Config JSON avec `placeholders` (titre, auteur, date) + `sections` avec `text`, `bullets`, `numbered`, `code`, `table`
 3. Le config.json écrit dans `/tmp/`
 
-**Validation utilisateur** : DOCX avec page de garde OBA, titres numérotés, listes à tirets, blocs de code en blanc sur noir (style "Code"), tableaux avec en-têtes bleus.
+**Validation utilisateur** : DOCX avec page de garde corporate, titres numérotés, listes à tirets, blocs de code en blanc sur noir (style "Code"), tableaux avec en-têtes bleus.
 
 **Validation technique** : vérifier que `fill_template.py` est appelé, que le config JSON contient des types variés (`bullets`, `code`, `table`, `numbered`).
 
@@ -153,13 +153,13 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 > ```
 
 **Méthodologie attendue** :
-1. `pandoc` avec `--reference-doc=$SKILLS_ROOT/docx/templates/onbehalfai/reference-pandoc.docx` pour appliquer les styles OBA
+1. `pandoc` avec `--reference-doc=$SKILLS_ROOT/docx/templates/corporate/reference-pandoc.docx` pour appliquer les styles corporate
 2. Optionnel : `--lua-filter=heading-unnumbered-v4.lua` pour les titres non numérotés
 3. `validate.py` sur le résultat
 
-**Validation utilisateur** : dans Word, les titres sont en style Heading1/Heading2 avec la charte OBA (Arial, couleurs navy), les listes sont des vraies listes Word.
+**Validation utilisateur** : dans Word, les titres sont en style Heading1/Heading2 avec la charte corporate (Arial, couleurs navy), les listes sont des vraies listes Word.
 
-**Validation technique** : vérifier que `pandoc` avec `--reference-doc` OBA a été utilisé (pas une création manuelle via python-docx).
+**Validation technique** : vérifier que `pandoc` avec `--reference-doc` corporate a été utilisé (pas une création manuelle via python-docx).
 
 ---
 
@@ -237,11 +237,11 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 > Crée un document Word "Fiche produit" avec : un titre "Fiche Produit — Widget Pro X200", un tableau de spécifications (Poids: 1.2 kg, Dimensions: 30x20x10 cm, Couleur: Noir mat, Prix HT: 149.90€), un paragraphe de description marketing de 3 lignes.
 
 **Méthodologie attendue** :
-1. `fill_template.py` avec le template OBA `template-base.docx`
+1. `fill_template.py` avec le template corporate `template-base.docx`
 2. Config JSON avec une section contenant un bloc `table` pour les spécifications et un bloc `text` pour la description
 3. Placeholders remplis : titre, auteur, date
 
-**Validation utilisateur** : le document utilise le template OBA (page de garde, styles), le tableau est formaté avec en-têtes bleus.
+**Validation utilisateur** : le document utilise le template corporate (page de garde, styles), le tableau est formaté avec en-têtes bleus.
 
 **Validation technique** : vérifier que `fill_template.py` est utilisé (pas python-docx from scratch).
 
@@ -308,7 +308,7 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 
 ---
 
-### P01b — Création d'une présentation avec template OBA
+### P01b — Création d'une présentation avec template corporate
 
 **Prérequis** : aucun fichier uploadé
 
@@ -316,13 +316,13 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 > Crée une présentation de 5 slides sur l'IA générative pour une réunion interne.
 
 **Méthodologie attendue** :
-1. PptxGenJS via Node.js avec la palette OBA (navy `1C244B`, blue `2F5597`, orange `FB840D`)
-2. Logo OBA intégré depuis `$SKILLS_ROOT/pptx/templates/onbehalfai/logo-onbehalfai.png`
+1. PptxGenJS via Node.js avec la palette corporate (navy `1C244B`, blue `2F5597`, orange `FB840D`)
+2. Corporate logo intégré depuis `$SKILLS_ROOT/pptx/templates/corporate/logo.png`
 3. Slide de titre sur fond navy, slides de contenu sur fond blanc, slide de closing sur fond navy
 
-**Validation utilisateur** : la charte OBA est respectée (couleurs navy/bleu/orange, logo, police Arial).
+**Validation utilisateur** : la charte corporate est respectée (couleurs navy/bleu/orange, logo, police Arial).
 
-**Validation technique** : vérifier la palette OBA dans le code JS et l'inclusion du logo.
+**Validation technique** : vérifier la palette corporate dans le code JS et l'inclusion du logo.
 
 ---
 
@@ -925,7 +925,7 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 
 ---
 
-### F13 — Création d'un PDF professionnel via template DOCX OBA
+### F13 — Création d'un PDF professionnel via template DOCX corporate
 
 **Prérequis** : aucun fichier uploadé
 
@@ -933,11 +933,11 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 > Crée un PDF professionnel "Proposition commerciale" avec une page de garde, 3 sections (Contexte, Offre de service, Conditions), et des listes à puces.
 
 **Méthodologie attendue** :
-1. `fill_template.py` avec le template OBA DOCX `template-base.docx` pour créer un DOCX intermédiaire
+1. `fill_template.py` avec le template corporate DOCX `template-base.docx` pour créer un DOCX intermédiaire
 2. `soffice.py --headless --convert-to pdf` pour convertir en PDF
 3. Le tout dans un seul `execute_code`
 
-**Validation utilisateur** : le PDF a la charte OBA (page de garde, titres numérotés, polices Arial).
+**Validation utilisateur** : le PDF a la charte corporate (page de garde, titres numérotés, polices Arial).
 
 **Validation technique** : vérifier que `fill_template.py` + `soffice.py` sont utilisés (pas `reportlab` from scratch).
 
@@ -1047,7 +1047,7 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 **Prérequis** : uploader une image
 
 **Prompt** :
-> Ajoute en bas de cette image un bandeau noir semi-transparent avec le texte "© onbehalf.ai 2026" en blanc, centré.
+> Ajoute en bas de cette image un bandeau noir semi-transparent avec le texte "© example.com 2026" en blanc, centré.
 
 **Méthodologie attendue** :
 1. `Pillow` avec `ImageDraw`, `ImageFont`, et blending pour la transparence
@@ -1169,14 +1169,14 @@ Ce document décrit les tests métier pour valider le bon fonctionnement de chaq
 
 **Méthodologie attendue** :
 1. `pandas` pour les agrégations
-2. `matplotlib` avec `plt.subplots(2, 2, figsize=(14, 10))` et palette OBA (`#2F5597`, `#5B9AD4`, `#FB840D`, `#FCA810`, `#1C244B`, `#DAE5EF`)
-3. `seaborn` avec `sns.set_palette()` OBA
+2. `matplotlib` avec `plt.subplots(2, 2, figsize=(14, 10))` et palette corporate (`#2F5597`, `#5B9AD4`, `#FB840D`, `#FCA810`, `#1C244B`, `#DAE5EF`)
+3. `seaborn` avec `sns.set_palette()` corporate
 4. `scipy.stats.linregress` pour la ligne de tendance
 5. `plt.savefig("/mnt/data/dashboard.png", dpi=150, bbox_inches="tight")`
 
-**Validation utilisateur** : les 4 graphiques sont dans une seule image, lisibles, esthétiques, aux couleurs OBA.
+**Validation utilisateur** : les 4 graphiques sont dans une seule image, lisibles, esthétiques, aux couleurs corporate.
 
-**Validation technique** : vérifier `subplots(2,2)`, backend `Agg`, palette OBA, et `savefig`.
+**Validation technique** : vérifier `subplots(2,2)`, backend `Agg`, palette corporate, et `savefig`.
 
 ---
 

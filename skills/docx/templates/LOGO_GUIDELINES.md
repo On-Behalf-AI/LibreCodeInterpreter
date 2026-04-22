@@ -87,9 +87,9 @@ Dans un DOCX, un logo peut être référencé avec deux formats simultanément :
    xfrm_height = int(target_height_emu * 1.032)
    ```
 
-3. **Valeurs de référence pour les templates On Behalf AI** :
+3. **Valeurs de référence pour les templates corporate** :
 
-   **Logo OBA horizontal transparent** : 943×217 px (ratio 4.35:1)
+   **Corporate logo horizontal transparent** : 943×217 px (ratio 4.35:1)
 
    Les deux templates utilisent les mêmes dimensions :
 
@@ -107,17 +107,17 @@ Dans un DOCX, un logo peut être référencé avec deux formats simultanément :
 
 ### Règle métier (définie dans les instructions agent)
 
-- Si CR avec une tierce partie identifiable → logo client + logo OBA
-- Si pas de logo client disponible → logo OBA seul
-- Si réunion interne ou trop de parties → logo OBA seul
+- Si CR avec une tierce partie identifiable → logo client + corporate logo
+- Si pas de logo client disponible → corporate logo seul
+- Si réunion interne ou trop de parties → corporate logo seul
 
 ### Procédure technique pour ajouter un logo client
 
-Le template CR a une cellule de 5.04 pouces (colonne droite, row 0). Actuellement le logo OBA y est seul. Pour ajouter un logo client :
+Le template CR a une cellule de 5.04 pouces (colonne droite, row 0). Actuellement le corporate logo y est seul. Pour ajouter un logo client :
 
 **Option A — Deux logos côte à côte dans la même cellule** :
 
-1. Réduire le logo OBA à ~1.2 pouces de large
+1. Réduire le corporate logo à ~1.2 pouces de large
 2. Ajouter le logo client à ~1.2 pouces de large
 3. Les séparer par un espace (paragraphe vide ou tab)
 
@@ -128,7 +128,7 @@ LOGO_WIDTH_EMU = int(1.2 * 914400)  # 1,097,280 EMU
 # Hauteur calculée selon le ratio de chaque logo
 ```
 
-**Option B — Logo client au-dessus, logo OBA en dessous** :
+**Option B — Logo client au-dessus, corporate logo en dessous** :
 
 1. Deux paragraphes dans la même cellule
 2. Chaque paragraphe contient un logo

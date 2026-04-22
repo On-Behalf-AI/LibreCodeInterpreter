@@ -5,7 +5,7 @@ Les templates propriétaires (fichiers `.docx`, logos, filtres Lua) ne sont **pa
 Ils sont injectés au runtime via un **volume mount Docker** depuis le serveur hôte :
 
 ```
-~/data/templates/docx/onbehalfai/ → /opt/skills/docx/templates/onbehalfai/ (read-only)
+~/data/templates/docx/<your-org>/ → /opt/skills/docx/templates/corporate/ (read-only)
 ```
 
 ## Pourquoi
@@ -14,7 +14,7 @@ Ce dépôt est un fork public. Les templates contiennent l'identité visuelle (l
 
 ## Comment ajouter/modifier un template
 
-1. Modifier le fichier sur le serveur : `~/data/templates/docx/onbehalfai/`
+1. Modifier le fichier sur le serveur : `~/data/templates/docx/<your-org>/`
 2. Redémarrer le container pour prise en compte (si nécessaire) :
    ```bash
    cd ~/LibreChat && docker compose -f deploy-compose.yml -f deploy-compose.override.yml up -d code-interpreter-api

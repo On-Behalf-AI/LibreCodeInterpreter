@@ -201,8 +201,8 @@ config/local.py
 
 # EXI-DLP: proprietary assets (templates, logos) are mounted at runtime via Docker volume
 # They must NOT be committed to this public fork
-skills/docx/templates/onbehalfai/
-skills/pptx/templates/onbehalfai/
+skills/docx/templates/corporate/
+skills/pptx/templates/corporate/
 Docx_Examples_for_templates_establishment_purpose/
 test-*/
 tests/results/

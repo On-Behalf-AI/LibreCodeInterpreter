@@ -29,9 +29,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Palette OBA pour les graphiques
-OBA_COLORS = ["#2F5597", "#5B9AD4", "#FB840D", "#FCA810", "#1C244B", "#DAE5EF"]
-sns.set_palette(OBA_COLORS)
+# Corporate palette pour les graphiques
+CORPORATE_COLORS = ["#2F5597", "#5B9AD4", "#FB840D", "#FCA810", "#1C244B", "#DAE5EF"]
+sns.set_palette(CORPORATE_COLORS)
 
 # Style professionnel
 plt.rcParams.update({
@@ -48,11 +48,11 @@ plt.rcParams.update({
 })
 ```
 
-# Palette OBA pour les visualisations
+# Corporate palette pour les visualisations
 
 | Ordre | Couleur | Hex | Usage |
 |-------|---------|-----|-------|
-| 1 | Bleu OBA | #2F5597 | Série principale |
+| 1 | Bleu corporate | #2F5597 | Série principale |
 | 2 | Bleu ciel | #5B9AD4 | Série secondaire |
 | 3 | Orange | #FB840D | Accent / highlight |
 | 4 | Ambre | #FCA810 | Série tertiaire |
@@ -96,7 +96,7 @@ results.to_excel("/mnt/data/results.xlsx")
 - **Toujours** utiliser le backend Agg : `matplotlib.use("Agg")`
 - **Toujours** sauvegarder avec `plt.savefig("/mnt/data/...", dpi=150, bbox_inches="tight")`
 - **Toujours** fermer avec `plt.close()` après chaque figure
-- Utiliser la **palette OBA** par défaut (sauf si l'utilisateur demande autre chose)
+- Utiliser la **corporate palette** par défaut (sauf si l'utilisateur demande autre chose)
 - Pour les gros datasets, afficher un **résumé** (`df.info()`, `df.shape`) avant de traiter
 - Les fichiers sont dans `/mnt/data/`
 - Écrire les fichiers temporaires dans `/tmp/`

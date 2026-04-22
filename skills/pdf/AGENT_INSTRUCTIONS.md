@@ -78,15 +78,15 @@ qpdf input.pdf repaired.pdf
 
 ## Créer un PDF professionnel (via DOCX → PDF)
 
-Pour créer un PDF avec mise en forme professionnelle OBA, utiliser le pipeline DOCX :
+Pour créer un PDF avec mise en forme professionnelle corporate, utiliser le pipeline DOCX :
 ```python
 import subprocess, json
-# 1. Créer un DOCX avec le template OBA
+# 1. Créer un DOCX avec le template corporate
 config = {"placeholders": {...}, "sections": [...]}
 with open("/tmp/config.json", "w") as f:
     json.dump(config, f, ensure_ascii=False)
 subprocess.run(["python3", "/opt/skills/docx/scripts/fill_template.py",
-    "/opt/skills/docx/templates/onbehalfai/template-base.docx",
+    "/opt/skills/docx/templates/corporate/template-base.docx",
     "/mnt/data/doc.docx", "/tmp/config.json"], check=True)
 # 2. Convertir en PDF
 subprocess.run(["python3", "/opt/skills/docx/scripts/office/soffice.py",
@@ -99,4 +99,4 @@ subprocess.run(["python3", "/opt/skills/docx/scripts/office/soffice.py",
 - Pour l'**OCR**, vérifier d'abord si le PDF contient déjà du texte extractible
 - Les fichiers sont dans `/mnt/data/`
 - Écrire les fichiers temporaires dans `/tmp/`
-- Pour la **création** de PDF, passer par le template DOCX OBA → conversion soffice
+- Pour la **création** de PDF, passer par le template DOCX corporate → conversion soffice

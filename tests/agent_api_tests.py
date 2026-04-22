@@ -294,7 +294,7 @@ import subprocess, json, os
 os.chdir('/mnt/data')
 config = {"meeting":{"title":"CR Test","subtitle":"Test","date":"17/04/2026","location":"Test","organizer":"Test"},"participants":[{"name":"A","role":"R","company":"C"}],"sections":[{"title":"Test","level":1,"content":[{"type":"text","text":"Contenu test."}]}]}
 with open("/tmp/config.json","w") as f: json.dump(config,f,ensure_ascii=False)
-subprocess.run(["python3","/opt/skills/docx/scripts/fill_cr_template.py","/opt/skills/docx/templates/onbehalfai/template-compte-rendu.docx","cr_test.docx","/tmp/config.json"],check=True)
+subprocess.run(["python3","/opt/skills/docx/scripts/fill_cr_template.py","/opt/skills/docx/templates/corporate/template-compte-rendu.docx","cr_test.docx","/tmp/config.json"],check=True)
 print("OK")
 ''',
     "D01c": '''
@@ -302,7 +302,7 @@ import subprocess, json, os
 os.chdir('/mnt/data')
 config = {"placeholders":{"[TITRE DU DOCUMENT]":"Guide Test","[Sous-titre du document]":"Test","[Auteur]":"Test","[Date]":"17/04/2026"},"sections":[{"title":"Section 1","level":1,"content":[{"type":"text","text":"Contenu."},{"type":"bullets","items":["A","B"]},{"type":"code","text":"echo hello"},{"type":"table","headers":["Col1","Col2"],"rows":[["a","b"]]}]}]}
 with open("/tmp/config.json","w") as f: json.dump(config,f,ensure_ascii=False)
-subprocess.run(["python3","/opt/skills/docx/scripts/fill_template.py","/opt/skills/docx/templates/onbehalfai/template-base.docx","guide_test.docx","/tmp/config.json"],check=True)
+subprocess.run(["python3","/opt/skills/docx/scripts/fill_template.py","/opt/skills/docx/templates/corporate/template-base.docx","guide_test.docx","/tmp/config.json"],check=True)
 print("OK")
 ''',
     "P01b": '''
@@ -346,7 +346,7 @@ axes[1,0].barh(["C1","C2","C3"],[100,80,60],color=colors[1])
 axes[1,0].set_title("Top Clients")
 axes[1,1].scatter(np.random.rand(20),np.random.rand(20),color=colors[2])
 axes[1,1].set_title("Scatter")
-plt.suptitle("Dashboard OBA",fontweight="bold")
+plt.suptitle("Dashboard corporate",fontweight="bold")
 plt.tight_layout()
 plt.savefig("/mnt/data/dashboard_test.png",dpi=150,bbox_inches="tight")
 plt.close()
@@ -383,8 +383,8 @@ def test(test_id, agent_id, agent_name, prompt, patterns, antipatterns=None,
 
 test("D01b", "agent_docx_complete", "DOCX",
      "Crée un compte-rendu de la réunion suivante : Réunion du 10 avril 2026, visioconférence Teams, "
-     "organisée par Damien Juillard. Participants : Sophie Martin (Directrice RH, Nextera Corp) et "
-     "Damien Juillard (Consultant IA, On Behalf AI). Sujet : cadrage projet IA RH. "
+     "organisée par Jean Dupont. Participants : Sophie Martin (Directrice RH, Nextera Corp) et "
+     "Jean Dupont (Consultant IA, Acme Corp). Sujet : cadrage projet IA RH. "
      "Décisions : lancement POC chatbot RH. Actions : étude faisabilité avant le 24 avril.",
      patterns=[
          r"fill_cr_template|compte.rendu|template.*CR",
@@ -397,7 +397,7 @@ test("D01c", "agent_docx_complete", "DOCX",
      "Crée un guide d'installation pour PostgreSQL sur Ubuntu, avec prérequis, étapes d'installation, "
      "configuration de base, et dépannage.",
      patterns=[
-         r"fill_template|template.*base|template.*OBA",
+         r"fill_template|template.*base|template.*corporate",
          r"execute_code",
      ],
      description="Créer un guide technique via fill_template.py",
@@ -415,7 +415,7 @@ test("D02", "agent_docx_complete", "DOCX",
      description="Tracked changes avec {{current_user}} comme auteur")
 
 test("D05", "agent_docx_complete", "DOCX",
-     "Convertis ce texte markdown en document Word avec les styles OBA :\n\n"
+     "Convertis ce texte markdown en document Word avec les styles corporate :\n\n"
      "# Politique de télétravail\n## 1. Principes généraux\n"
      "Le télétravail est ouvert à tous les collaborateurs.\n"
      "## 2. Modalités\n- Maximum 3 jours par semaine\n- Accord du manager requis\n"
@@ -424,7 +424,7 @@ test("D05", "agent_docx_complete", "DOCX",
      description="Conversion Markdown -> DOCX avec pandoc + inject_cover.py")
 
 test("D08", "agent_docx_complete", "DOCX",
-     "Convertis ce texte en PDF professionnel avec mise en forme OBA :\n\n"
+     "Convertis ce texte en PDF professionnel avec mise en forme corporate :\n\n"
      "Titre : Rapport mensuel\nAuteur : Damien\n\n"
      "Section 1 : Résumé exécutif\nLe mois d'avril a été marqué par une croissance de 15%.\n\n"
      "Section 2 : Détails\n- Ventes : 150k€\n- Charges : 120k€\n- Résultat : +30k€",
@@ -437,7 +437,7 @@ test("D10", "agent_docx_complete", "DOCX",
      "un tableau de spécifications (Poids: 1.2kg, Dimensions: 30x20x10cm, Prix HT: 149.90€), "
      "et un paragraphe de description marketing.",
      patterns=[
-         r"fill_template|template.*OBA|template.*base",
+         r"fill_template|template.*corporate|template.*base",
          r"execute_code",
      ],
      description="Création avec fill_template.py + type table",
@@ -447,7 +447,7 @@ test("D13", "agent_docx_complete", "DOCX",
      "Rédige un courrier professionnel adressé à M. Pascal Caiozzo, Arémont SAS, 75008 Paris. "
      "Objet : proposition d'accompagnement IA pour les équipes achats. "
      "Contenu : suite à notre échange, nous proposons une intervention en 3 étapes (keynote, formation, acculturation) "
-     "pour un budget de 11 900€ HT. Signé par Damien Juillard, Consultant IA, On Behalf AI.",
+     "pour un budget de 11 900€ HT. Signé par Jean Dupont, Consultant IA, Acme Corp.",
      patterns=[
          r"fill_courrier|template.*courrier|courrier",
          r"execute_code",
@@ -459,7 +459,7 @@ test("D14", "agent_docx_complete", "DOCX",
      "Fais un document Word à partir de ce markdown de réunion :\n\n"
      "# Compte-rendu de réunion - Projet Alpha\n\n"
      "## Informations\n\n- **Date :** 15 avril 2026\n- **Lieu :** Visioconférence\n\n"
-     "## Participants\n\n- Sophie Martin (DRH, Nextera)\n- Damien Juillard (Consultant, OBA)\n\n"
+     "## Participants\n\n- Sophie Martin (DRH, Nextera)\n- Jean Dupont (Consultant, Acme)\n\n"
      "## Décisions\n\n1. **Lancement POC** prévu le 1er mai\n   - Budget : 15k€\n   - Pilote : équipe RH\n"
      "2. **Formation** des managers en juin\n   - 3 sessions de 2h\n\n"
      "## Actions\n\n- Damien : envoyer proposition avant le 20 avril\n- Sophie : valider budget interne",
@@ -473,7 +473,7 @@ test("D14", "agent_docx_complete", "DOCX",
 test("D15", "agent_docx_complete", "DOCX",
      "Voici un compte-rendu en markdown. Fais-en un Word :\n\n"
      "# CR Réunion Projet Beta\n\n## Infos\n\n- **Date :** 18/04/2026\n- **Lieu :** Teams\n\n"
-     "## Participants\n\n- Alice Dupont (Chef de projet, ClientCo)\n- Bob Martin (Dev Lead, OBA)\n\n"
+     "## Participants\n\n- Alice Dupont (Chef de projet, ClientCo)\n- Bob Martin (Dev Lead, Acme)\n\n"
      "## Points abordés\n\n1. **Planning sprint 4**\n   - Livraison prévue le 30 avril\n"
      "   - 3 stories restantes\n2. **Bug critique #142**\n   - Corrigé en prod\n   - Post-mortem prévu\n\n"
      "## Actions\n\n- Alice : valider la recette avant le 25\n- Bob : préparer le post-mortem",
@@ -569,10 +569,10 @@ test("D12", "agent_docx_complete", "DOCX",
 test("P01b", "agent_pptx_complete", "PPTX",
      "Crée une présentation de 5 slides sur l'IA générative pour une réunion interne.",
      patterns=[
-         r"pptxgenjs|pptxgen|PptxGenJS|create_from_template|template.*corporate|template.*OBA",
+         r"pptxgenjs|pptxgen|PptxGenJS|create_from_template|template.*corporate|template.*corporate",
          r"execute_code",
      ],
-     description="Création PPTX avec template OBA ou pptxgenjs",
+     description="Création PPTX avec template corporate ou pptxgenjs",
      expect_file=True, file_ext=".pptx")
 
 test("P01", "agent_pptx_complete", "PPTX",
@@ -655,7 +655,7 @@ test("P07", "agent_pptx_complete", "PPTX",
      description="Extraction contenu PPTX en markdown")
 
 test("P09", "agent_pptx_complete", "PPTX",
-     "Voici un template PowerPoint vide On Behalf AI (P09.pptx) avec 47 layouts disponibles "
+     "Voici un template PowerPoint vide Acme Corp (P09.pptx) avec 47 layouts disponibles "
      "mais aucun slide. Ajoute un nouveau slide en utilisant le 2ème layout disponible. "
      "Titre : 'Prochaines étapes', contenu : 'Valider le budget', 'Recruter 2 développeurs', "
      "'Lancer la V2 en juin'.",
@@ -665,7 +665,7 @@ test("P09", "agent_pptx_complete", "PPTX",
 
 test("P10", "agent_pptx_complete", "PPTX",
      "Voici un deck corporate en français (P10.pptx, 26 slides, 5 Mo). "
-     "Remplace toutes les occurrences de 'On Behalf AI' par 'OBA Consulting' "
+     "Remplace toutes les occurrences de 'Acme Corp' par 'corporate Consulting' "
      "dans tous les slides, y compris les masters et layouts.",
      patterns=[r"replace|remplac|unpack|xml"],
      description="Remplacement texte dans toute la présentation",
@@ -809,7 +809,7 @@ test("F13", "agent_pdf_complete", "PDF",
          r"pdf|PDF|soffice|template|fill_template",
          r"execute_code",
      ],
-     description="Création PDF via DOCX OBA -> soffice",
+     description="Création PDF via DOCX corporate -> soffice",
      expect_file=True, file_ext=".pdf")
 
 test("F04", "agent_pdf_complete", "PDF",
@@ -956,7 +956,7 @@ test("M04", "agent_quick_edits", "FFmpeg",
 test("M07", "agent_quick_edits", "FFmpeg",
      "Voici une photo de paysage montagneux (Landscape_big_river_in_mountains.jpg, "
      "1600x1066 px, 194 Ko). Ajoute en bas un bandeau noir semi-transparent avec "
-     "le texte '© onbehalf.ai 2026' en blanc, centré.",
+     "le texte '© example.com 2026' en blanc, centré.",
      patterns=[r"PIL|Pillow|ImageDraw|texte|bandeau"],
      description="Ajout bandeau texte sur photo paysage",
      expect_file=True, file_ext=".jpg")
@@ -1019,11 +1019,11 @@ test("A01", "agent_data_viz", "DataViz",
 test("A02", "agent_data_viz", "DataViz",
      "Crée un dashboard en une seule image avec 4 graphiques à partir de données fictives : "
      "(1) courbe CA mensuel, (2) camembert par catégorie, (3) barres top clients, "
-     "(4) scatter quantité vs montant. Utilise la palette de couleurs OBA.",
+     "(4) scatter quantité vs montant. Utilise la palette de couleurs corporate.",
      patterns=[
-         r"dashboard|subplots|graphique|OBA|palette|4.*graph",
+         r"dashboard|subplots|graphique|corporate|palette|4.*graph",
      ],
-     description="Dashboard 4 graphiques avec palette OBA",
+     description="Dashboard 4 graphiques avec palette corporate",
      expect_file=True, file_ext=".png")
 
 test("A03", "agent_data_viz", "DataViz",

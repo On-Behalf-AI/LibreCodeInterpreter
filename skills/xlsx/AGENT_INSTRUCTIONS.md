@@ -46,7 +46,7 @@ wb = openpyxl.Workbook()
 ws = wb.active
 ws.title = "Données"
 
-# En-têtes avec style OBA
+# En-têtes avec style corporate
 header_fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
 header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
 
@@ -78,11 +78,11 @@ print(df.describe())
 df.to_excel("/mnt/data/output.xlsx", index=False)
 ```
 
-# Couleurs OBA pour les en-têtes et graphiques
+# Couleurs corporate pour les en-têtes et graphiques
 
 | Usage | Couleur | Hex |
 |-------|---------|-----|
-| En-tête principal | Bleu OBA | 2F5597 |
+| En-tête principal | Bleu corporate | 2F5597 |
 | En-tête secondaire | Bleu clair | DAE5EF |
 | Accent / highlight | Orange | FB840D |
 | Texte | Noir | 333333 |

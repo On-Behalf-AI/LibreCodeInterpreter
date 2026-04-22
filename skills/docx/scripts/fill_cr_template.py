@@ -11,11 +11,11 @@ Config JSON format:
         "subtitle": "Client / Objet de la réunion",
         "date": "16/04/2026",
         "location": "Visioconférence Teams",
-        "organizer": "Damien Juillard"
+        "organizer": "Jane Doe"
     },
     "participants": [
         {"name": "Sophie Martin", "role": "Directrice RH", "company": "Nextera Corp"},
-        {"name": "Damien Juillard", "role": "Consultant IA", "company": "On Behalf AI"}
+        {"name": "Jane Doe", "role": "Consultant", "company": "Acme Corp"}
     ],
     "sections": [
         {

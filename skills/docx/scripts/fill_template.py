@@ -9,7 +9,7 @@ Config JSON format:
     "placeholders": {
         "[TITRE DU DOCUMENT]": "Guide d'Installation n8n",
         "[Sous-titre du document]": "Automatisation Workflow",
-        "[Auteur]": "Damien",
+        "[Auteur]": "Author Name",
         "[Date]": "16/04/2026"
     },
     "sections": [

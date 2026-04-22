@@ -6,7 +6,7 @@ Usage:
 
 Config JSON format:
 {
-    "from": "Damien Juillard",
+    "from": "Jane Doe",
     "to": "Équipe Technique",
     "cc": "Direction Générale",
     "date": "21 avril 2026",
@@ -17,7 +17,7 @@ Config JSON format:
         "Troisième paragraphe."
     ],
     "sender": {
-        "name": "Damien Juillard",
+        "name": "Jane Doe",
         "title": "Directeur Général"
     }
 }

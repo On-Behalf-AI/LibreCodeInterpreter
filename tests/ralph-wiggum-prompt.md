@@ -6,13 +6,13 @@ Exécuter la suite de 76 tests des agents LibreChat et corriger itérativement l
 
 ## Contexte
 
-Ce projet est un fork enrichi de LibreCodeInterpreter (`On-Behalf-AI/LibreCodeInterpreter`, branche `feat/agent-skills-runtime`). Il sert de runtime pour 6 agents LibreChat spécialisés (DOCX, PPTX, XLSX, PDF, FFmpeg, DataViz) qui transforment des documents avec des templates corporate On Behalf AI.
+Ce projet est un fork enrichi de LibreCodeInterpreter (`Acme-Corp/LibreCodeInterpreter`, branche `feat/agent-skills-runtime`). Il sert de runtime pour 6 agents LibreChat spécialisés (DOCX, PPTX, XLSX, PDF, FFmpeg, DataViz) qui transforment des documents avec des templates corporate Acme Corp.
 
 ### Architecture
 
 ```
 skills/
-├── docx/   → AGENT_INSTRUCTIONS.md (27 KB) + scripts/ + templates/onbehalfai/
+├── docx/   → AGENT_INSTRUCTIONS.md (27 KB) + scripts/ + templates/corporate/
 │   ├── scripts/
 │   │   ├── fill_template.py          ← Guide/rapport from JSON
 │   │   ├── fill_cr_template.py       ← Compte-rendu from JSON
@@ -20,12 +20,12 @@ skills/
 │   │   ├── inject_cover.py           ← Post-process pandoc output (10 steps)
 │   │   ├── tracked_replace.py, accept_changes.py, comment.py
 │   │   └── office/ (unpack.py, pack.py, validate.py, soffice.py)
-│   └── templates/onbehalfai/
+│   └── templates/corporate/
 │       ├── template-base.docx         ← Guides, rapports
 │       ├── template-compte-rendu.docx ← CRs
 │       ├── template-courrier.docx     ← Lettres
 │       └── reference-pandoc.docx      ← Pandoc styles+footer
-├── pptx/   → AGENT_INSTRUCTIONS.md (14 KB) + scripts/ + templates/onbehalfai/
+├── pptx/   → AGENT_INSTRUCTIONS.md (14 KB) + scripts/ + templates/corporate/
 ├── xlsx/   → AGENT_INSTRUCTIONS.md (3 KB)
 ├── pdf/    → AGENT_INSTRUCTIONS.md (3 KB)
 ├── ffmpeg/ → AGENT_INSTRUCTIONS.md (2 KB)

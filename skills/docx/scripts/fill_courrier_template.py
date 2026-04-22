@@ -21,9 +21,9 @@ Config JSON format:
     ],
     "closing": "Je vous prie d'agréer, Madame, Monsieur, l'expression de mes salutations distinguées.",
     "sender": {
-        "name": "Damien Juillard",
+        "name": "Jane Doe",
         "title": "Consultant IA",
-        "email": "damien@onbehalf.ai",
+        "email": "jane.doe@example.com",
         "phone": "+33 6 XX XX XX XX"
     }
 }
@@ -92,7 +92,7 @@ def fill_courrier(template_path: str, output_path: str, config: dict) -> str:
         # Step 2: Replace function/email/phone in sender block
         sender_placeholders = {
             "Fonction": sender.get("title", ""),
-            "email@onbehalf.ai": sender.get("email", ""),
+            "email@example.com": sender.get("email", ""),
             "+33 X XX  XX   XX  XX": sender.get("phone", ""),
             "+33 X XX XX XX XX": sender.get("phone", ""),
         }

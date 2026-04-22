@@ -30,7 +30,7 @@ subprocess.run(["python3", "/opt/skills/docx/scripts/office/validate.py", "outpu
 
 | Tâche | Outil | Langage |
 |-------|-------|---------|
-| **Créer** un nouveau document | **Ouvrir le template OBA** → remplir avec python-docx ou unpack/XML/pack | Python |
+| **Créer** un nouveau document | **Ouvrir le template corporate** → remplir avec python-docx ou unpack/XML/pack | Python |
 | **Créer** sans template (cas rare) | `docx` (npm) — seulement si aucun template n'est applicable | JavaScript |
 | **Éditer** un document existant | unpack → modifier XML → pack | Python + XML |
 | **Tracked changes** (redlines) | `tracked_replace.py` ou édition XML manuelle | Python |
@@ -40,7 +40,7 @@ subprocess.run(["python3", "/opt/skills/docx/scripts/office/validate.py", "outpu
 | **Accepter** tracked changes | `accept_changes.py` | Python |
 | **Ajouter** des commentaires | `comment.py` + édition XML | Python |
 
-**IMPORTANT : Pour créer un document, TOUJOURS partir d'un template OBA** (pas de docx-js from scratch). Les templates contiennent les styles, thème, numérotation, logo et page de garde pré-formatés. Créer de zéro avec docx-js perd tout cela.
+**IMPORTANT : Pour créer un document, TOUJOURS partir d'un template corporate** (pas de docx-js from scratch). Les templates contiennent les styles, thème, numérotation, logo et page de garde pré-formatés. Créer de zéro avec docx-js perd tout cela.
 
 # Scripts disponibles (chemin absolu $SKILLS_ROOT)
 
@@ -60,7 +60,7 @@ python3 $SKILLS_ROOT/docx/scripts/fill_note_template.py <template-note-interne.d
 # CRÉATION de contrat / NDA / réponse AO depuis template (générique)
 python3 $SKILLS_ROOT/docx/scripts/fill_contrat_template.py <template.docx> <output.docx> <config.json>
 
-# POST-PROCESSING : injecter cover page OBA dans un DOCX pandoc
+# POST-PROCESSING : injecter cover page corporate dans un DOCX pandoc
 python3 $SKILLS_ROOT/docx/scripts/inject_cover.py <input.docx> <output.docx> --title "..." [--subtitle "..."] [--author "..."] [--date "..."]
 
 $SKILLS_ROOT = /opt/skills
@@ -91,26 +91,26 @@ python3 $SKILLS_ROOT/docx/scripts/office/soffice.py --headless --convert-to docx
 - `pdftoppm -jpeg -r 150 document.pdf page` — DOCX→images (via PDF intermédiaire)
 - `node` — avec package `docx` global pour création programmatique
 
-# Création de documents : TOUJOURS partir du template OBA
+# Création de documents : TOUJOURS partir du template corporate
 
-Quand l'utilisateur demande de CRÉER un document sans fournir de template ou de document de référence, tu DOIS partir d'un template On Behalf AI. Ne JAMAIS créer un document de zéro avec docx-js.
+Quand l'utilisateur demande de CRÉER un document sans fournir de template ou de document de référence, tu DOIS partir d'un template corporate. Ne JAMAIS créer un document de zéro avec docx-js.
 
 ## Templates disponibles
 
 ```
-$SKILLS_ROOT/docx/templates/onbehalfai/
+$SKILLS_ROOT/docx/templates/corporate/
 ├── template-base.docx              # Guides, docs techniques, rapports (cover page + version table + logo)
 ├── template-compte-rendu.docx      # Comptes-rendus de réunion (header + métadonnées + participants)
-├── template-courrier.docx          # Courriers / lettres (en-tête OBA, destinataire, corps, signature)
+├── template-courrier.docx          # Courriers / lettres (corporate header, destinataire, corps, signature)
 ├── template-contrat-services.docx  # Contrat de services (CG + CP Formations + CP Dev-Intégration)
 ├── template-contrat-apport.docx    # Contrat d'apport d'affaires (12 articles)
 ├── template-nda.docx               # Accord de confidentialité / NDA (6 articles)
 ├── template-reponse-ao.docx        # Réponse à appel d'offres (executive summary + proposition technique + financière)
-├── template-note-interne.docx      # Note interne / mémo (header OBA, De/À/Cc/Date/Objet, corps, signature)
+├── template-note-interne.docx      # Note interne / mémo (header corporate, De/À/Cc/Date/Objet, corps, signature)
 ├── reference-pandoc.docx           # Reference doc pandoc (styles/polices seulement — PAS de cover page ni logo)
 ├── heading-unnumbered-v4.lua       # Filtre Lua pour titres non-numérotés (pandoc)
-├── logo-onbehalfai.png             # Logo On Behalf AI (PNG)
-└── logo-onbehalfai.svg             # Logo On Behalf AI (SVG)
+├── logo.png             # Corporate logo (PNG)
+└── logo.svg             # Corporate logo (SVG)
 ```
 
 ## Workflow de création : utiliser fill_template.py (RECOMMANDÉ)
@@ -125,7 +125,7 @@ config = {
     "placeholders": {
         "[TITRE DU DOCUMENT]": "Guide d'Installation n8n",
         "[Sous-titre du document]": "Automatisation Workflow",
-        "[Auteur]": "Damien Juillard",
+        "[Auteur]": "Author Name",
         "[Date]": "16/04/2026"
     },
     "sections": [
@@ -153,7 +153,7 @@ with open("/tmp/config.json", "w") as f:
 
 subprocess.run([
     "python3", "/opt/skills/docx/scripts/fill_template.py",
-    "/opt/skills/docx/templates/onbehalfai/template-base.docx",
+    "/opt/skills/docx/templates/corporate/template-base.docx",
     "output.docx",
     "/tmp/config.json"
 ], check=True)
@@ -226,7 +226,7 @@ config = {
     },
     "participants": [
         {"name": "Jean Dupont", "role": "DSI", "company": "Client"},
-        {"name": "{{current_user}}", "role": "Consultant IA", "company": "On Behalf AI"}
+        {"name": "{{current_user}}", "role": "Consultant IA", "company": "Acme Corp"}
     ],
     "sections": [
         {"title": "Contexte", "level": 1, "content": [{"type": "text", "text": "..."}]},
@@ -253,7 +253,7 @@ with open("/tmp/config.json", "w") as f:
 
 subprocess.run([
     "python3", "/opt/skills/docx/scripts/fill_cr_template.py",
-    "/opt/skills/docx/templates/onbehalfai/template-compte-rendu.docx",
+    "/opt/skills/docx/templates/corporate/template-compte-rendu.docx",
     "compte-rendu.docx",
     "/tmp/config.json"
 ], check=True)
@@ -351,7 +351,7 @@ with open("/tmp/config.json", "w") as f:
 
 subprocess.run([
     "python3", "/opt/skills/docx/scripts/fill_courrier_template.py",
-    "/opt/skills/docx/templates/onbehalfai/template-courrier.docx",
+    "/opt/skills/docx/templates/corporate/template-courrier.docx",
     "courrier.docx",
     "/tmp/config.json"
 ], check=True)
@@ -389,7 +389,7 @@ with open("/tmp/config.json", "w") as f:
 
 subprocess.run([
     "python3", "/opt/skills/docx/scripts/fill_contrat_template.py",
-    "/opt/skills/docx/templates/onbehalfai/template-contrat-services.docx",
+    "/opt/skills/docx/templates/corporate/template-contrat-services.docx",
     "contrat.docx",
     "/tmp/config.json"
 ], check=True)
@@ -414,7 +414,7 @@ Si `fill_template.py` ne couvre pas un besoin spécifique (ex: insertion de tabl
 import subprocess, shutil, os
 from lxml import etree
 os.chdir('/mnt/data')
-shutil.copy('/opt/skills/docx/templates/onbehalfai/template-base.docx', 'output.docx')
+shutil.copy('/opt/skills/docx/templates/corporate/template-base.docx', 'output.docx')
 subprocess.run(["python3", "/opt/skills/docx/scripts/office/unpack.py", "output.docx", "unpacked/"], check=True)
 
 # Utiliser lxml pour manipuler le XML (JAMAIS string replace)
@@ -447,7 +447,7 @@ subprocess.run(["python3", "/opt/skills/docx/scripts/office/validate.py", "outpu
 - La table de participants (nom, fonction, entreprise)
 - L'ajout de logo tiers si le CR concerne une réunion avec un client identifiable
 
-Le résultat visuel d'un CR créé via fill_cr_template.py doit être visuellement cohérent avec un guide créé via pandoc + inject_cover — même charte graphique OBA, mêmes polices, mêmes couleurs.
+Le résultat visuel d'un CR créé via fill_cr_template.py doit être visuellement cohérent avec un guide créé via pandoc + inject_cover — même charte graphique corporate, mêmes polices, mêmes couleurs.
 
 ## Conversion depuis Markdown (.md → .docx)
 
@@ -457,7 +457,7 @@ Utiliser quand l'agent **structure lui-même** le contenu (pas de fichier .md en
 
 ### Approche 2 : RECOMMANDÉE pour markdown — Pandoc + inject_cover.py
 
-Pandoc est robuste pour parser le markdown (tables, code, listes imbriquées). Le script `inject_cover.py` ajoute la page de garde OBA, transplante les styles, et corrige les bordures de tableaux.
+Pandoc est robuste pour parser le markdown (tables, code, listes imbriquées). Le script `inject_cover.py` ajoute la corporate cover page, transplante les styles, et corrige les bordures de tableaux.
 
 #### Pré-check obligatoire : analyser les niveaux de titres
 
@@ -566,9 +566,9 @@ Ce guide fournit une procédure pas-à-pas...
 SHIFT=-1
 
 pandoc input.md -o temp.docx \
-  --reference-doc=$SKILLS_ROOT/docx/templates/onbehalfai/reference-pandoc.docx \
+  --reference-doc=$SKILLS_ROOT/docx/templates/corporate/reference-pandoc.docx \
   --shift-heading-level-by=$SHIFT \
-  --lua-filter=$SKILLS_ROOT/docx/templates/onbehalfai/heading-unnumbered-v4.lua
+  --lua-filter=$SKILLS_ROOT/docx/templates/corporate/heading-unnumbered-v4.lua
 
 python3 $SKILLS_ROOT/docx/scripts/inject_cover.py temp.docx output.docx \
   --title "Titre du Document" \
@@ -580,10 +580,10 @@ rm temp.docx
 ```
 
 **Ce que fournit cette approche** :
-- ✓ Page de garde avec titre, sous-titre et logo OBA
+- ✓ Page de garde avec titre, sous-titre et corporate logo
 - ✓ Table de version 4 colonnes (Date, Objet, Auteur, Version)
 - ✓ Footer pagination "X / Y"
-- ✓ Styles OBA complets (polices, couleurs, tailles)
+- ✓ Styles corporate complets (polices, couleurs, tailles)
 - ✓ Numérotation hiérarchique des titres (avec support {.unnumbered})
 - ✓ Bordures gris clair sur les tableaux de contenu
 - ✓ Parsing markdown robuste (tables complexes, code imbriqué, listes)
@@ -594,9 +594,9 @@ Pour une conversion minimale sans page de garde (ex: brouillon rapide) :
 
 ```bash
 pandoc input.md -o output.docx \
-  --reference-doc=$SKILLS_ROOT/docx/templates/onbehalfai/reference-pandoc.docx \
+  --reference-doc=$SKILLS_ROOT/docx/templates/corporate/reference-pandoc.docx \
   --shift-heading-level-by=-1 \
-  --lua-filter=$SKILLS_ROOT/docx/templates/onbehalfai/heading-unnumbered-v4.lua
+  --lua-filter=$SKILLS_ROOT/docx/templates/corporate/heading-unnumbered-v4.lua
 ```
 
 Fournit styles + numérotation + footer pagination, mais **pas de page de garde ni logo**.
@@ -618,16 +618,16 @@ Fournit styles + numérotation + footer pagination, mais **pas de page de garde 
 
 ### Ce que fait inject_cover.py en interne
 
-Le script fait plus qu'injecter une cover page — il transforme un DOCX pandoc brut en document OBA complet (10 étapes) :
+Le script fait plus qu'injecter une cover page — il transforme un DOCX pandoc brut en document corporate complet (10 étapes) :
 
 1. **Transplante 6 fichiers** de `template-base.docx` :
-   - `word/styles.xml` (styles OBA complets)
+   - `word/styles.xml` (styles corporate complets)
    - `word/numbering.xml` (numérotation hiérarchique)
    - `word/settings.xml` + `word/endnotes.xml` (doivent être transplantés ensemble)
-   - `word/theme/theme1.xml` (thème couleurs OBA)
+   - `word/theme/theme1.xml` (thème couleurs corporate)
    - `word/footer1.xml` (pagination "X / Y")
 
-2. **Remappe les style IDs** (pandoc → OBA) :
+2. **Remappe les style IDs** (pandoc → corporate) :
    - `Heading1` → `Titre1`, `Heading2` → `Titre2`, `Heading3` → `Titre3`
    - `FirstParagraph`, `BodyText` → `Normal`
    - `SourceCode` → `Code`
@@ -695,7 +695,7 @@ Le script fait plus qu'injecter une cover page — il transforme un DOCX pandoc 
 
 **ATTENTION** : ne PAS utiliser `Heading1`/`Heading2` (IDs anglais) — utiliser `Titre1`/`Titre2` (IDs du template).
 
-## Charte graphique On Behalf AI (référence)
+## Charte graphique corporate (référence)
 
 - Police : Arial (tout le document)
 - Heading 1 : 14pt, bold, #233F70 (navy)
@@ -872,7 +872,7 @@ CRITIQUE : `<w:commentRangeStart>` et `<w:commentRangeEnd>` sont des siblings de
 Si l'utilisateur fournit un document Word comme base ou template :
 1. **Analyse d'abord** la mise en forme : polices, styles, marges, headers/footers, images, couleurs
 2. **Respecte fidèlement** la charte graphique du document chargé
-3. **Ne substitue PAS** les styles du template OBA — utilise ceux du document fourni
+3. **Ne substitue PAS** les styles du template corporate — utilise ceux du document fourni
 4. Pour les éditions, utilise le pipeline unpack/edit/pack pour préserver au maximum le formatage original
 
 # Référence avancée

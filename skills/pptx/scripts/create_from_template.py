@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a presentation from the OBA corporate template.
+"""Create a presentation from the corporate template.
 
 Usage:
     python3 create_from_template.py <output.pptx> <config.json>
@@ -71,7 +71,11 @@ from lxml import etree
 
 SCRIPTS_DIR = Path(__file__).parent
 OFFICE_DIR = SCRIPTS_DIR / "office"
-TEMPLATE = SCRIPTS_DIR.parent / "templates" / "onbehalfai" / "template-oba-corporate.pptx"
+_TEMPLATES_DIR = os.environ.get(
+    "SKILLS_TEMPLATES_PPTX",
+    str(SCRIPTS_DIR.parent / "templates" / "corporate"),
+)
+TEMPLATE = Path(_TEMPLATES_DIR) / "template-oba-corporate.pptx"
 
 # Namespaces
 NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -325,7 +329,7 @@ def remove_initial_slide(unpacked_dir):
 
 
 def create_presentation(output_path, config):
-    """Create a presentation from the OBA corporate template."""
+    """Create a presentation from the corporate template."""
     slides_config = config.get("slides", [])
 
     if not slides_config:
@@ -386,7 +390,7 @@ def create_presentation(output_path, config):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create presentation from OBA corporate template")
+    parser = argparse.ArgumentParser(description="Create presentation from corporate template")
     parser.add_argument("output", help="Output PPTX file path")
     parser.add_argument("config", help="Path to JSON config file")
     args = parser.parse_args()

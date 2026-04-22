@@ -19,14 +19,14 @@ Les fichiers temporaires ne persistent PAS entre les appels execute_code. Tu DOI
 
 | Tâche | Outil | Langage |
 |-------|-------|---------|
-| **Créer** sans template utilisateur | **Template OBA corporate** → unpack → add_slide → edit → pack | Python + XML |
+| **Créer** sans template utilisateur | **Template corporate corporate** → unpack → add_slide → edit → pack | Python + XML |
 | **Créer** from scratch (cas rare) | pptxgenjs | JavaScript (Node.js) |
 | **Éditer** un PPTX existant | unpack → modifier XML → clean → pack | Python + XML |
 | **Analyser** un template | thumbnail.py + markitdown | Python |
 | **Convertir** PPTX→PDF | soffice.py --convert-to pdf | Python |
 | **Extraire** du texte | `python -m markitdown file.pptx` | Python |
 
-**IMPORTANT** : Pour créer une présentation, TOUJOURS partir du template OBA corporate (50 layouts professionnels) sauf si l'utilisateur fournit son propre template. Ne JAMAIS utiliser pptxgenjs from scratch quand le template OBA peut être utilisé.
+**IMPORTANT** : Pour créer une présentation, TOUJOURS partir du template corporate corporate (50 layouts professionnels) sauf si l'utilisateur fournit son propre template. Ne JAMAIS utiliser pptxgenjs from scratch quand le template corporate peut être utilisé.
 
 # Scripts disponibles ($SKILLS_ROOT = /opt/skills)
 
@@ -46,10 +46,10 @@ python3 $SKILLS_ROOT/pptx/scripts/office/validate.py <file.pptx>
 python3 $SKILLS_ROOT/pptx/scripts/office/soffice.py --headless --convert-to pdf <file.pptx>
 ```
 
-# Palette de couleurs On Behalf AI
+# Corporate color palette
 
 ```javascript
-const OBA = {
+const corporate = {
     navy: "1C244B",       // Fond titre/closing, texte principal foncé
     blue: "2F5597",       // Fond section divider, accent principal
     blueLight: "DAE5EF",  // Fond cards, zones secondaires
@@ -65,14 +65,14 @@ const OBA = {
 };
 ```
 
-**Règle** : quand l'utilisateur ne fournit pas de template, utiliser le template OBA corporate. JAMAIS de slide blanche avec bullets noirs par défaut.
+**Règle** : quand l'utilisateur ne fournit pas de template, utiliser le template corporate corporate. JAMAIS de slide blanche avec bullets noirs par défaut.
 
-# Template OBA Corporate (RECOMMANDÉ)
+# Template corporate Corporate (RECOMMANDÉ)
 
-**Fichier** : `$SKILLS_ROOT/pptx/templates/onbehalfai/template-oba-corporate.pptx`
-**Référence** : `$SKILLS_ROOT/pptx/templates/onbehalfai/TEMPLATE_REFERENCE.md`
+**Fichier** : `$SKILLS_ROOT/pptx/templates/corporate/template-oba-corporate.pptx`
+**Référence** : `$SKILLS_ROOT/pptx/templates/corporate/TEMPLATE_REFERENCE.md`
 
-Template professionnel avec **50 layouts**, thème OBA, polices Poppins, slide master avec éléments décoratifs.
+Template professionnel avec **50 layouts**, thème corporate, polices Poppins, slide master avec éléments décoratifs.
 
 ## Workflow de création (dans UN SEUL code block)
 
@@ -82,7 +82,7 @@ from lxml import etree
 os.chdir('/mnt/data')
 
 # 1. Copier le template
-shutil.copy('/opt/skills/pptx/templates/onbehalfai/template-oba-corporate.pptx', 'presentation.pptx')
+shutil.copy('/opt/skills/pptx/templates/corporate/template-oba-corporate.pptx', 'presentation.pptx')
 
 # 2. Unpack
 subprocess.run(["python3", "/opt/skills/pptx/scripts/office/unpack.py", 
@@ -108,7 +108,7 @@ subprocess.run(["python3", "/opt/skills/pptx/scripts/office/pack.py",
 Parmi les 50 layouts du template, utilise ces 12 qui couvrent tous les besoins :
 
 ### 1. COUVERTURE — `slideLayout1.xml` (Title)
-- **Visuel** : Logo OBA centré en haut, vagues bleues décoratives en bas
+- **Visuel** : Corporate logo centré en haut, vagues bleues décoratives en bas
 - **Placeholders** : `ctrTitle` (titre centré), `subTitle[1]` (sous-titre)
 - **Usage** : Première slide d'un deck. Titre de la présentation + nom/date
 
@@ -123,7 +123,7 @@ Parmi les 50 layouts du template, utilise ces 12 qui couvrent tous les besoins :
 - **Usage** : Sommaire, ordre du jour, plan de la présentation
 
 ### 4. CONTENU — `slideLayout7.xml` (Title + Content #1) ⭐ LE PLUS UTILISÉ
-- **Visuel** : Triangle décoratif bleu en bas-gauche, logo OBA en haut-droite, fond blanc
+- **Visuel** : Triangle décoratif bleu en bas-gauche, corporate logo en haut-droite, fond blanc
 - **Placeholders** : `title` (titre haut), `body[14]` (zone contenu pleine largeur 11.1×4.9")
 - **Usage** : Bullets, texte, tout contenu standard. C'est le layout polyvalent par excellence.
 - **Variante avec sous-titre** : `slideLayout6.xml` ajoute `subTitle[13]` sous le titre
@@ -149,12 +149,12 @@ Parmi les 50 layouts du template, utilise ces 12 qui couvrent tous les besoins :
 - **Usage** : Slide de mise en valeur, chiffres clés, citation impactante
 
 ### 9. SECTION BLEU FONCÉ — `slideLayout38.xml` (Section title - dark blue)
-- **Visuel** : Fond bleu foncé uni (#1C244B), logo OBA visible
+- **Visuel** : Fond bleu foncé uni (#1C244B), corporate logo visible
 - **Placeholders** : `ctrTitle` (titre section), `subTitle[1]` (description)
 - **Usage** : Séparateur de section principal (sérieux, corporate)
 
 ### 10. SECTION ORANGE — `slideLayout41.xml` (Section title - orange)
-- **Visuel** : Fond orange vif (#FB840D) avec chevrons bleus et logo OBA
+- **Visuel** : Fond orange vif (#FB840D) avec chevrons bleus et corporate logo
 - **Placeholders** : `ctrTitle` (titre section), `subTitle[1]` (description)
 - **Usage** : Séparateur de section (dynamique, énergie, action)
 
@@ -171,7 +171,7 @@ Parmi les 50 layouts du template, utilise ces 12 qui couvrent tous les besoins :
 ## Règle de sélection des layouts
 
 Pour un deck standard de N slides, composer ainsi :
-1. **Slide 1** : **TOUJOURS Layout 1** (`slideLayout1.xml`) — c'est la page de garde avec le logo OBA centré et les vagues
+1. **Slide 1** : **TOUJOURS Layout 1** (`slideLayout1.xml`) — c'est la page de garde avec le corporate logo centré et les vagues
 2. **Slide 2** : Layout 3 (agenda) — si >5 slides dans le deck
 3. **Slides de section** : Layout 9 (bleu) ou 10 (orange) — alterner les couleurs
 4. **Slides de contenu** : Layout 4 (le plus courant), varier avec 5 (contenu+image), 6 (2 col.), 7 (3 col.)
@@ -186,15 +186,15 @@ Le Layout 2 (Title + text) peut servir comme slide d'introduction juste après l
 
 Pour les 50 layouts (cas avancés, team, SmartArt...) :
 ```bash
-cat $SKILLS_ROOT/pptx/templates/onbehalfai/TEMPLATE_REFERENCE.md
+cat $SKILLS_ROOT/pptx/templates/corporate/TEMPLATE_REFERENCE.md
 ```
 
 ## Template simple (fallback)
 
 Si le template corporate est trop complexe pour un cas spécifique, un template simple pptxgenjs est aussi disponible :
-`$SKILLS_ROOT/pptx/templates/onbehalfai/template-oba.pptx` (5 slides basiques).
+`$SKILLS_ROOT/pptx/templates/corporate/template-oba.pptx` (5 slides basiques).
 
-Logo OBA : `$SKILLS_ROOT/pptx/templates/onbehalfai/logo-onbehalfai.png`
+Corporate logo : `$SKILLS_ROOT/pptx/templates/corporate/logo.png`
 
 # Création avec pptxgenjs (recommandé pour from scratch)
 
@@ -246,7 +246,7 @@ pptx.writeFile({ fileName: "/mnt/data/output.pptx" })
 ```javascript
 slide.addChart(pptx.ChartType.bar, chartData, {
     x: 0.5, y: 1.5, w: 9.0, h: 3.5,
-    chartColors: ["2F5597", "5B9AD4", "FB840D"],  // Palette OBA
+    chartColors: ["2F5597", "5B9AD4", "FB840D"],  // Corporate palette
     showValue: true,
     catAxisLabelColor: "666666",
     valGridLine: { color: "E2E8F0", size: 0.5 },
@@ -315,7 +315,7 @@ Vérifier : pas de texte tronqué, pas de chevauchement, contraste lisible, coh�
 
 1. **Analyser d'abord** avec thumbnail.py et markitdown
 2. **Respecter** la charte graphique du document chargé (couleurs, polices, layouts)
-3. **Ne pas substituer** les styles OBA — utiliser ceux du document
+3. **Ne pas substituer** les styles corporate — utiliser ceux du document
 4. Pour les éditions, utiliser le pipeline unpack/edit/clean/pack
 
 # Règles générales

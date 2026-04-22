@@ -24,7 +24,7 @@
 | Test | Fichier | Contenu |
 |------|---------|---------|
 | P01 | *(création from scratch)* | Pas de fichier — pptxgenjs |
-| P01b | *(création from template)* | Pas de fichier — template OBA |
+| P01b | *(création from template)* | Pas de fichier — template corporate |
 | P02 | P02.pptx | EN, "Researcher Deep Dive" AI research. 20 slides, tables, notes (9.1 MB) |
 | P03 | P03.pptx | Identique à P02 (même md5). Pour analyse thumbnails |
 | P04 | P04.pptx | FR, 1 slide daté 30/06/2025 (679 KB) |

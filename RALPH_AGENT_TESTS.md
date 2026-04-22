@@ -4,9 +4,9 @@
 
 Tu travailles sur le repo LibreCodeInterpreter (`/home/damien/LibreCodeInterpreter`), branche `feat/agent-skills-runtime`.
 
-Ce repo est le runtime d'exécution de code pour 6 agents LibreChat (chat-dev.onbehalf.ai) :
-- **DOCX** (`agent_docx_complete`) — création/édition de documents Word via templates OBA + scripts Python
-- **PPTX** (`agent_pptx_complete`) — création de présentations PowerPoint via pptxgenjs + templates OBA
+Ce repo est le runtime d'exécution de code pour 6 agents LibreChat (chat-dev.example.com) :
+- **DOCX** (`agent_docx_complete`) — création/édition de documents Word via templates corporate + scripts Python
+- **PPTX** (`agent_pptx_complete`) — création de présentations PowerPoint via pptxgenjs + templates corporate
 - **XLSX** (`agent_xlsx_complete`) — manipulation de fichiers Excel via openpyxl/pandas
 - **PDF** (`agent_pdf_complete`) — manipulation de PDF + création via pipeline DOCX→PDF
 - **FFmpeg** (`agent_quick_edits`) — manipulation de fichiers médias
@@ -15,7 +15,7 @@ Ce repo est le runtime d'exécution de code pour 6 agents LibreChat (chat-dev.on
 Chaque agent a :
 - Des **instructions** (system prompt) stockées en MongoDB ET dans `skills/<agent>/AGENT_INSTRUCTIONS.md`
 - Des **scripts** dans `skills/<agent>/scripts/`
-- Des **templates OBA** (On Behalf AI) dans `skills/<agent>/templates/onbehalfai/`
+- Des **templates corporate** (Acme Corp) dans `skills/<agent>/templates/corporate/`
 - Son code s'exécute dans un **sandbox nsjail** via le container `code-interpreter-api` (image `code-interpreter:agent-skills`)
 
 Les agents sont appelables via l'**API Open Responses** de LibreChat :
@@ -157,7 +157,7 @@ Répète les étapes 2-4 jusqu'à ce que TOUS les tests passent.
 - **pack.py** : syntaxe positionnelle `pack.py <dir/> <output.docx>` (PAS de `-o`)
 - **Style IDs DOCX** : francisés (`Titre1`, `Titre2`, `Paragraphedeliste`, `PrformatHTML`, `Code`)
 - **pptxgenjs** : couleurs hex sans "#", `bullet: true` pas de "•" unicode
-- **Palette OBA** : navy `1C244B`, blue `2F5597`, orange `FB840D`, blueLight `DAE5EF`
+- **Palette corporate** : navy `1C244B`, blue `2F5597`, orange `FB840D`, blueLight `DAE5EF`
 - **{{current_user}}** : résolu par LibreChat dans les instructions, devient le vrai nom de l'utilisateur
 - Les fichiers temporaires dans `/tmp/`, les sorties dans `/mnt/data/`
 - Le sandbox a 120s de timeout max par exécution
@@ -196,12 +196,12 @@ Quand les 17 tests sont PASS :
 | `skills/pptx/scripts/clean.py` | Nettoyer fichiers orphelins PPTX |
 | `skills/xlsx/scripts/recalc.py` | Recalculer formules Excel via LibreOffice |
 
-### Templates OBA
+### Templates corporate
 | Template | Contenu |
 |----------|---------|
-| `skills/docx/templates/onbehalfai/template-base.docx` | Cover page + version table + logo |
-| `skills/docx/templates/onbehalfai/template-compte-rendu.docx` | Header + metadata + participants |
-| `skills/pptx/templates/onbehalfai/template-oba.pptx` | 5 slides (titre, section, contenu, 2 colonnes, closing) |
+| `skills/docx/templates/corporate/template-base.docx` | Cover page + version table + logo |
+| `skills/docx/templates/corporate/template-compte-rendu.docx` | Header + metadata + participants |
+| `skills/pptx/templates/corporate/template-oba.pptx` | 5 slides (titre, section, contenu, 2 colonnes, closing) |
 
 ### Problèmes connus (déjà corrigés — ne pas régresser)
 - `pack.py` n'accepte PAS `-o` flag (arguments positionnels)

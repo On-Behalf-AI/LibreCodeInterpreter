@@ -6,7 +6,7 @@ Ce guide permet de déployer LibreCodeInterpreter avec le runtime enrichi pour l
 
 - **LibreChat** déjà installé et fonctionnel (avec MongoDB, API, NGINX)
 - **Docker** 24.0+ avec Docker Compose v2.20+
-- **Git** configuré avec accès au repo `On-Behalf-AI/LibreCodeInterpreter`
+- **Git** configuré avec accès au repo `Acme-Corp/LibreCodeInterpreter`
 - **~10 Go** d'espace disque pour l'image Docker (~8.8 Go)
 - Le serveur doit avoir les ports suivants libres en local :
   - `8010` (code-interpreter API, bind sur 127.0.0.1)
@@ -16,7 +16,7 @@ Ce guide permet de déployer LibreCodeInterpreter avec le runtime enrichi pour l
 
 ```bash
 cd /home/damien  # ou votre répertoire de travail
-git clone https://github.com/On-Behalf-AI/LibreCodeInterpreter.git
+git clone https://github.com/Acme-Corp/LibreCodeInterpreter.git
 cd LibreCodeInterpreter
 git checkout feat/agent-skills-runtime
 git pull origin feat/agent-skills-runtime
@@ -534,7 +534,7 @@ cd /home/damien/LibreCodeInterpreter
 
 ## Personnalisation des templates
 
-### Remplacer le template OBA par celui d'un client
+### Remplacer le template corporate par celui d'un client
 
 ```bash
 # DOCX : copier les templates du client
@@ -554,15 +554,15 @@ cp client_template.pptx skills/pptx/templates/<client>/template-corporate.pptx
 ```
 skills/
 ├── docx/templates/
-│   ├── onbehalfai/          # Templates On Behalf AI (par défaut)
+│   ├── corporate/          # Templates Acme Corp (par défaut)
 │   │   ├── template-base.docx
 │   │   ├── template-compte-rendu.docx
-│   │   └── logo-onbehalfai.png
+│   │   └── logo.png
 │   └── <client>/            # Templates client (optionnel)
 │       ├── template-base.docx
 │       └── logo.png
 └── pptx/templates/
-    ├── onbehalfai/
+    ├── corporate/
     │   ├── template-oba-corporate.pptx  # 50 layouts
     │   └── TEMPLATE_REFERENCE.md
     └── <client>/
