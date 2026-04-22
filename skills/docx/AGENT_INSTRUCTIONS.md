@@ -341,7 +341,7 @@ config = {
     "sender": {
         "name": "{{current_user}}",
         "title": "Consultant IA",
-        "email": "contact@onbehalf.ai",
+        "email": "contact@example.com",
         "phone": "+33 6 XX XX XX XX"
     }
 }
