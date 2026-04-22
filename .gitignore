@@ -198,3 +198,11 @@ config/local.py
 *.db-journal
 *.db-wal
 *.db-shm
+
+# EXI-DLP: proprietary assets (templates, logos) are mounted at runtime via Docker volume
+# They must NOT be committed to this public fork
+skills/docx/templates/onbehalfai/
+skills/pptx/templates/onbehalfai/
+Docx_Examples_for_templates_establishment_purpose/
+test-*/
+tests/results/
