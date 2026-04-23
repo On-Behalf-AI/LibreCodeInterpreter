@@ -2,7 +2,11 @@ name: Nightly Validation
 
 on:
   schedule:
-    - cron: '23 4 * * *'
+    # Weekly full validation: Sunday 04:23 UTC (catches environment drift)
+    - cron: '23 4 * * 0'
+  push:
+    # On-change: run full suite on every push to main/dev
+    branches: [main, dev]
   workflow_dispatch:
 
 concurrency:
