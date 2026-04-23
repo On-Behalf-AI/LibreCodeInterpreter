@@ -4,11 +4,12 @@
 Executes code in the real nsjail sandbox, same path as LibreChat agents.
 """
 import json
+import os
 import sys
 import requests
 
 API = "http://127.0.0.1:8010"
-KEY = "REDACTED_KEY_ROTATED_2026-04-23"
+KEY = os.environ.get("CODE_INTERPRETER_KEY", "")
 PASS = 0
 FAIL = 0
 RESULTS = []

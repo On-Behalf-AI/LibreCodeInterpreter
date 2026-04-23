@@ -46,7 +46,7 @@ except ImportError:
 API_BASE = os.environ.get("LIBRECHAT_URL", "http://127.0.0.1:3080")
 API_KEY = os.environ.get("AGENT_API_KEY", "")
 CI_BASE = os.environ.get("CODE_INTERPRETER_URL", "http://127.0.0.1:8010")
-CI_KEY = os.environ.get("CODE_INTERPRETER_KEY", "REDACTED_KEY_ROTATED_2026-04-23")
+CI_KEY = os.environ.get("CODE_INTERPRETER_KEY", "")
 JWT_TOKEN = os.environ.get("LIBRECHAT_JWT", "")  # For file uploads (optional)
 RESPONSES_ENDPOINT = f"{API_BASE}/api/agents/v1/responses"
 RESULTS_DIR = Path("tests/results")

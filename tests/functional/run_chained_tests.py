@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Chained pipeline tests using session_id for file persistence."""
 import json
+import os
 import sys
 import uuid
 import requests
 
 API = "http://127.0.0.1:8010"
-KEY = "REDACTED_KEY_ROTATED_2026-04-23"
+KEY = os.environ.get("CODE_INTERPRETER_KEY", "")
 PASS = 0
 FAIL = 0
 RESULTS = []
