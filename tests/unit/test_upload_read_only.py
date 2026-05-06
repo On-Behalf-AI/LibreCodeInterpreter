@@ -64,10 +64,9 @@ class TestStoreUploadedFileReadOnlyMetadata:
         from src.services.file import FileService
 
         svc = FileService()
-        # Don't actually talk to MinIO — patch the storage and metadata bits.
         svc._ensure_bucket_exists = AsyncMock()
-        svc.minio_client = MagicMock()
-        svc.minio_client.put_object = MagicMock()
+        svc.s3_client = MagicMock()
+        svc.s3_client.put_object = MagicMock()
         svc._store_file_metadata = AsyncMock()
         return svc
 

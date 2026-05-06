@@ -184,7 +184,7 @@ async def _startup_egress_proxy(app: FastAPI) -> None:
     # Network-level enforcement so a malicious skill can't `socket.create_connection`
     # around the application-level proxy. Without these iptables rules, sandbox
     # processes — sharing the API container's net namespace — can directly reach
-    # Redis/MinIO and any internal docker network. Refuse to enable network if the
+    # Redis/S3 and any internal docker network. Refuse to enable network if the
     # firewall can't be installed (better to fail loudly than to silently leak SSRF).
     from .config.languages import SANDBOX_USER_ID
     from .services.sandbox.egress_firewall import install_sandbox_egress_rules
@@ -201,7 +201,7 @@ async def _startup_egress_proxy(app: FastAPI) -> None:
             "ENABLE_SANDBOX_NETWORK=true but the iptables egress firewall could "
             "not be installed. The container needs CAP_NET_ADMIN (cap_add: NET_ADMIN "
             "in compose) and an iptables binary. Without these rules, sandboxes "
-            "could SSRF Redis/MinIO via direct sockets — refusing to enable network."
+            "could SSRF Redis/S3 via direct sockets — refusing to enable network."
         )
 
     logger.info(

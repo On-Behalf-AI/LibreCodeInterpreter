@@ -135,7 +135,7 @@ async def upload_file(
             # Sanitize filename to match what will be used in container
             sanitized_name = OutputProcessor.sanitize_filename(file.filename)
 
-            # Store with sanitized name so MinIO, sandbox, and cleanup all use the same name
+            # Store with sanitized name so S3, sandbox, and cleanup all use the same name
             file_id = await file_service.store_uploaded_file(
                 session_id=session_id,
                 filename=sanitized_name,

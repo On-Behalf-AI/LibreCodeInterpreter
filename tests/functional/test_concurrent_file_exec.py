@@ -1,7 +1,7 @@
 """Functional tests for concurrent execution with large file uploads.
 
 Regression test for event loop blocking bug: when large files (>40MB) are
-downloaded from MinIO during file mounting, response.read() blocks the
+downloaded from S3 during file mounting, response.read() blocks the
 asyncio event loop, starving all concurrent HTTP connections.
 
 This manifests as "socket hang up" errors in clients like LibreChat.

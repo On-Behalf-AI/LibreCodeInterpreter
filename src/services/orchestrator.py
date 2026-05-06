@@ -500,11 +500,11 @@ class ExecutionOrchestrator:
         return mounted
 
     async def _load_state(self, ctx: ExecutionContext) -> None:
-        """Load previous state from Redis (or MinIO fallback) for Python sessions.
+        """Load previous state from Redis (or S3 fallback) for Python sessions.
 
         Priority order:
         1. Redis hot storage (within 2-hour TTL)
-        2. MinIO cold storage (archived state)
+        2. S3 cold storage (archived state)
         """
         if not settings.state_persistence_enabled:
             return
@@ -531,14 +531,14 @@ class ExecutionOrchestrator:
                 )
                 return
 
-            # Try MinIO fallback (cold storage)
+            # Try S3 fallback (cold storage)
             if self.state_archival_service and settings.state_archive_enabled:
                 ctx.initial_state = await self.state_archival_service.restore_state(
                     ctx.session_id
                 )
                 if ctx.initial_state:
                     logger.debug(
-                        "Restored state from MinIO",
+                        "Restored state from S3",
                         session_id=ctx.session_id[:12],
                         state_size=len(ctx.initial_state),
                     )
@@ -574,9 +574,9 @@ class ExecutionOrchestrator:
                 max_redis_bytes = settings.state_max_redis_size_mb * 1024 * 1024
 
                 if raw_size > max_redis_bytes:
-                    # Large state: store blob in MinIO, pointer in Redis
+                    # Large state: store blob in S3, pointer in Redis
                     logger.info(
-                        "State exceeds Redis threshold, storing in MinIO",
+                        "State exceeds Redis threshold, storing in S3",
                         session_id=ctx.session_id[:12],
                         state_size_mb=round(raw_size / 1024 / 1024, 1),
                         threshold_mb=settings.state_max_redis_size_mb,
@@ -593,9 +593,9 @@ class ExecutionOrchestrator:
                             ttl_seconds=settings.state_ttl_seconds,
                         )
                     else:
-                        # MinIO failed, fall back to Redis anyway
+                        # S3 archival failed, fall back to Redis anyway
                         logger.warning(
-                            "MinIO archival failed, falling back to Redis",
+                            "S3 archival failed, falling back to Redis",
                             session_id=ctx.session_id[:12],
                         )
                         await self.state_service.save_state(

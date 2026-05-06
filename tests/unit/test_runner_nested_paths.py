@@ -327,7 +327,7 @@ class TestDetectGeneratedFilesInPlaceEdits:
 
 class TestMountFilesNestedPaths:
     """The mount path is harder to fully exercise because it pulls bytes from
-    MinIO. We patch FileService.stream_file_to_path and just confirm that
+    S3. We patch FileService.stream_file_to_path and just confirm that
     parent directories are created at the right nested location."""
 
     async def test_nested_filename_creates_parent_dirs(self, runner, tmp_path):

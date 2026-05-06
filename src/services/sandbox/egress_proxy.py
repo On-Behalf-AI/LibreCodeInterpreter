@@ -9,7 +9,7 @@ into their env; pip, npm, go, cargo all honor that variable. The proxy:
   the upstream. Allowlist enforcement happens on the requested host name.
 - Refuses to open tunnels to private IP ranges (RFC 1918, loopback, link-local)
   even if a public hostname resolves to one. This stops trivial SSRF against
-  Redis/MinIO/etc. on the same docker network.
+  Redis/S3/etc. on the same docker network.
 - Refuses any request whose host doesn't match the allowlist.
 
 Allowlist defaults cover Python (PyPI), Node (npmjs), Go modules, and

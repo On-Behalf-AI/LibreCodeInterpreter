@@ -2,7 +2,7 @@
 
 Without this, enabling ENABLE_SANDBOX_NETWORK shares the API container's
 network namespace with sandbox processes, which gives them direct access to
-internal services like Redis/MinIO on the docker bridge — full SSRF.
+internal services like Redis/S3 on the docker bridge — full SSRF.
 
 The hostname-allowlist proxy only protects HTTPS_PROXY-aware clients
 (pip, npm, requests with proxy support). Raw socket calls — `socket.create_connection`,
@@ -134,7 +134,7 @@ def install_sandbox_egress_rules(sandbox_uid: int, proxy_port: int) -> bool:
             "ACCEPT",
         ],
         # Drop everything else from the sandbox uid. This is what blocks
-        # direct connections to Redis/MinIO/internet.
+        # direct connections to Redis/S3/internet.
         [
             "-A",
             "OUTPUT",

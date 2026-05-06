@@ -2035,7 +2035,7 @@ class TestLibreChatUploadBatch:
         assert response.status_code == 200
         result = response.json()
         assert result["files"][0]["filename"] == "skills/weather_lookup/SKILL.md"
-        # The stored filename also preserves the path so MinIO/sandbox round-trip works.
+        # The stored filename also preserves the path so S3/sandbox round-trip works.
         assert "skills/weather_lookup/SKILL.md" in setup_mocks["stored"]
 
 

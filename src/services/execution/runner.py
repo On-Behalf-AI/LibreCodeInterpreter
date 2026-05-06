@@ -701,7 +701,7 @@ class CodeExecutionRunner:
     ) -> None:
         """Mount files to sandbox workspace.
 
-        Uses streaming (MinIO fget_object) to transfer files directly to the
+        Uses streaming (S3 download_file) to transfer files directly to the
         sandbox data directory without loading entire files into memory. This
         avoids blocking the asyncio event loop during large file transfers.
 
@@ -763,7 +763,7 @@ class CodeExecutionRunner:
                             size_mb=round(file_size / 1024 / 1024, 1),
                         )
 
-                    # Stream directly from MinIO to sandbox directory (non-blocking)
+                    # Stream directly from S3 to sandbox directory (non-blocking)
                     success = await file_service.stream_file_to_path(
                         session_id, file_id, dest_path
                     )

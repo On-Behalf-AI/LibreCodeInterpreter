@@ -29,7 +29,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Import grouped configurations
 from .api import APIConfig
 from .redis import RedisConfig
-from .minio import MinIOConfig
+from .s3 import S3Config
 from .security import SecurityConfig
 from .resources import ResourcesConfig
 from .logging import LoggingConfig
@@ -143,12 +143,13 @@ class Settings(BaseSettings):
     redis_socket_timeout: int = Field(default=5, ge=1)
     redis_socket_connect_timeout: int = Field(default=5, ge=1)
 
-    # MinIO/S3 Configuration
-    minio_endpoint: str = Field(default="localhost:9000")
-    minio_access_key: str = Field(default="test-access-key", min_length=3)
-    minio_secret_key: str = Field(default="test-secret-key", min_length=8)
-    minio_secure: bool = Field(default=False)
-    minio_bucket: str = Field(default="code-interpreter-files")
+    # S3 Storage Configuration
+    s3_endpoint: str = Field(default="localhost:3900")
+    s3_access_key: str = Field(default="test-access-key", min_length=3)
+    s3_secret_key: str = Field(default="test-secret-key", min_length=8)
+    s3_secure: bool = Field(default=False)
+    s3_bucket: str = Field(default="code-interpreter-files")
+    s3_region: str = Field(default="garage")
 
     # Sandbox (nsjail) Configuration
     nsjail_binary: str = Field(
@@ -196,7 +197,7 @@ class Settings(BaseSettings):
     # Session Configuration
     session_ttl_hours: int = Field(default=24, ge=1, le=168)
     session_cleanup_interval_minutes: int = Field(default=60, ge=1, le=1440)
-    enable_orphan_minio_cleanup: bool = Field(default=True)
+    enable_orphan_s3_cleanup: bool = Field(default=True)
 
     # Sandbox Pool Configuration
     sandbox_pool_enabled: bool = Field(default=True)
@@ -250,24 +251,24 @@ class Settings(BaseSettings):
         default=100,
         ge=1,
         le=500,
-        description="Max state size (MB, raw bytes) for Redis storage. Larger states go directly to MinIO",
+        description="Max state size (MB, raw bytes) for Redis storage. Larger states go directly to S3 cold storage",
     )
 
-    # State Archival Configuration - Hybrid Redis + MinIO storage
+    # State Archival Configuration - Hybrid Redis + S3 storage
     state_archive_enabled: bool = Field(
-        default=True, description="Enable archiving inactive states from Redis to MinIO"
+        default=True, description="Enable archiving inactive states from Redis to S3"
     )
     state_archive_after_seconds: int = Field(
         default=3600,
         ge=300,
         le=86400,
-        description="Archive state to MinIO after this many seconds of inactivity. Default: 1 hour",
+        description="Archive state to S3 after this many seconds of inactivity. Default: 1 hour",
     )
     state_archive_ttl_days: int = Field(
         default=1,
         ge=1,
         le=30,
-        description="Keep archived states in MinIO for N days. Default: 1 (24 hours)",
+        description="Keep archived states in S3 for N days. Default: 1 (24 hours)",
     )
     state_archive_check_interval_seconds: int = Field(
         default=300,
@@ -449,12 +450,12 @@ class Settings(BaseSettings):
         """Parse comma-separated API keys into a list."""
         return [key.strip() for key in v.split(",") if key.strip()] if v else None
 
-    @validator("minio_endpoint")
-    def validate_minio_endpoint(cls, v):
-        """Ensure MinIO endpoint doesn't include protocol."""
+    @validator("s3_endpoint")
+    def validate_s3_endpoint(cls, v):
+        """Ensure S3 endpoint doesn't include protocol."""
         if v.startswith(("http://", "https://")):
             raise ValueError(
-                "MinIO endpoint should not include protocol (use minio_secure instead)"
+                "S3 endpoint should not include protocol (use s3_secure instead)"
             )
         return v
 
@@ -505,14 +506,15 @@ class Settings(BaseSettings):
         )
 
     @property
-    def minio(self) -> MinIOConfig:
-        """Access MinIO configuration group."""
-        return MinIOConfig(
-            minio_endpoint=self.minio_endpoint,
-            minio_access_key=self.minio_access_key,
-            minio_secret_key=self.minio_secret_key,
-            minio_secure=self.minio_secure,
-            minio_bucket=self.minio_bucket,
+    def s3(self) -> S3Config:
+        """Access S3 storage configuration group."""
+        return S3Config(
+            s3_endpoint=self.s3_endpoint,
+            s3_access_key=self.s3_access_key,
+            s3_secret_key=self.s3_secret_key,
+            s3_secure=self.s3_secure,
+            s3_bucket=self.s3_bucket,
+            s3_region=self.s3_region,
         )
 
     @property
@@ -539,7 +541,7 @@ class Settings(BaseSettings):
             max_filename_length=self.max_filename_length,
             session_ttl_hours=self.session_ttl_hours,
             session_cleanup_interval_minutes=self.session_cleanup_interval_minutes,
-            enable_orphan_minio_cleanup=self.enable_orphan_minio_cleanup,
+            enable_orphan_s3_cleanup=self.enable_orphan_s3_cleanup,
         )
 
     @property
@@ -612,7 +614,7 @@ __all__ = [
     # Grouped configs
     "APIConfig",
     "RedisConfig",
-    "MinIOConfig",
+    "S3Config",
     "SecurityConfig",
     "ResourcesConfig",
     "LoggingConfig",
