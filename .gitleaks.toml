@@ -1,0 +1,9 @@
+# EXI-DLP gitleaks config — whitelist upstream false positives
+# Findings are test files with placeholder API keys and SECURITY.md
+# with curl auth examples from upstream authors (Joe Licata).
+[allowlist]
+description = "Test fixtures and security documentation examples"
+paths = [
+    '''tests/''',
+    '''docs/''',
+]

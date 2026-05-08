@@ -7,7 +7,7 @@ the CLI arguments for invoking nsjail.
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import structlog
 
@@ -33,6 +33,14 @@ class SandboxInfo:
     created_at: datetime
     repl_mode: bool = False
     labels: Dict[str, str] = field(default_factory=dict)
+    # Snapshot of (mtime_ns, size) for each mounted file basename, captured
+    # right after _mount_files_to_sandbox writes the file but BEFORE user code
+    # runs. Used by _detect_generated_files to distinguish "user edited a
+    # mounted file in place" from "mounted file is unchanged" so iterative
+    # edits to scripts get persisted as new file_ids in the current session.
+    mounted_file_stats: Dict[
+        str, Tuple[int, int, Optional[str], Optional[str], Optional[str]]
+    ] = field(default_factory=dict)
 
     @property
     def id(self) -> str:
@@ -194,15 +202,27 @@ class NsjailConfig:
 
         # Seccomp policy: block dangerous syscalls
         # - ptrace: prevents process inspection/debugging (BUG-006a)
-        # - bind: prevents opening server sockets (BUG-006c)
-        # Python exempts bind because LibreOffice needs AF_UNIX sockets
-        # for IPC between oosplash and soffice.bin. Network namespace
-        # isolation (--iface_no_lo) already prevents external connections.
-        if normalized_lang in ("py", "python", "java"):
-            seccomp = "POLICY policy { ERRNO(1) { ptrace } } USE policy DEFAULT ALLOW"
+        # - bind: was originally blocked to prevent server sockets even with
+        #   network access (BUG-006c), but exempt for languages that need
+        #   AF_UNIX sockets for internal IPC:
+        #     - Python: LibreOffice (soffice) uses AF_UNIX between oosplash
+        #       and soffice.bin (legacy Python skill path on this fork).
+        #     - Java: similar reason (some shared libs use AF_UNIX).
+        #     - Bash: same as Python but for the bash_tool migration entry
+        #       point. LibreOffice still uses AF_UNIX regardless of which
+        #       language invokes it.
+        # Network namespace isolation (--iface_no_lo) already prevents
+        # external connections, so allowing bind is safe.
+        # Using ERRNO(1) so the process gets EPERM rather than SIGSYS.
+        if normalized_lang in ("py", "python", "java", "bash"):
+            seccomp_policy = (
+                "POLICY policy { ERRNO(1) { ptrace } } USE policy DEFAULT ALLOW"
+            )
         else:
-            seccomp = "POLICY policy { ERRNO(1) { ptrace, bind } } USE policy DEFAULT ALLOW"
-        args.extend(["--seccomp_string", seccomp])
+            seccomp_policy = (
+                "POLICY policy { ERRNO(1) { ptrace, bind } } USE policy DEFAULT ALLOW"
+            )
+        args.extend(["--seccomp_string", seccomp_policy])
 
         # Working directory: /mnt/data (bind-mounted by the executor wrapper)
         args.extend(["--cwd", "/mnt/data"])
