@@ -65,8 +65,11 @@ class SandboxExecutor:
         # Use absolute path since nsjail uses execve (no PATH search)
         shell_command = ["/bin/sh", "-c", command]
 
-        # Build nsjail arguments
-        network = False  # nsjail sandboxes run without network access
+        # Network access is operator-controlled via ENABLE_SANDBOX_NETWORK.
+        # Default off (sandboxes are isolated). When on, sandboxes share the
+        # host network namespace so they can reach the inline egress proxy
+        # at 127.0.0.1, which then enforces the package-registry allowlist.
+        network = bool(settings.enable_sandbox_network)
         nsjail_args = self._nsjail_config.build_args(
             sandbox_dir=str(sandbox_info.data_dir),
             command=shell_command,
@@ -84,15 +87,32 @@ class SandboxExecutor:
                 shlex.quote(str(a)) for a in [settings.nsjail_binary] + nsjail_args
             )
             # BUG-003: Mask /proc for most languages.
-            # Java/Rust need /proc/self/exe for shared library resolution.
-            # Python needs /proc for LibreOffice (soffice) which is used by
-            # DOCX/XLSX/PPTX agent skills for document conversion.
-            # PID namespace (nsjail) ensures /proc only shows sandbox processes.
+            # Languages that get /proc access (proc_mask = "" = no masking):
+            #   - Java needs /proc/self/exe to locate libjli.so.
+            #   - Rust needs /proc/self/exe to locate its own binary path.
+            #   - Python needs /proc for LibreOffice (soffice) used by the
+            #     DOCX/XLSX/PPTX agent skills (legacy Python path, still in use
+            #     on this fork — the skills/* directory contains Python scripts
+            #     that use python-docx/python-pptx/lxml + subprocess soffice).
+            #   - Bash is the new entry point for skills via LibreChat's
+            #     bash_tool migration (PR #12767). soffice hard-fails with
+            #     "ERROR: /proc not mounted - LibreOffice is unlikely to work
+            #     well if at all" without /proc.
+            # nsjail still creates a separate PID namespace, so /proc only
+            # shows sandbox processes — main host info disclosure risk is
+            # /proc/cpuinfo and /proc/meminfo, acceptable in the trusted-tenant
+            # model these languages run in.
             lang = sandbox_info.language.lower().strip()
-            if lang in ("java", "rs", "py", "python"):
+            if lang in ("java", "rs", "py", "python", "bash"):
                 proc_mask = ""
             else:
-                proc_mask = "mount --bind /tmp/empty_proc /proc && "
+                proc_mask = (
+                    "mount --bind /var/lib/code-interpreter/empty_proc /proc && "
+                )
+
+            tmpfs_size = settings.sandbox_tmpfs_size_mb
+            noexec_tmpfs = "noexec,nosuid,nodev,"
+            deps_path = settings.skill_deps_path
 
             wrapper_cmd = (
                 # Bind sandbox dir to /mnt/data (before hiding sandboxes dir)
@@ -109,6 +129,17 @@ class SandboxExecutor:
                 f"mount -t tmpfs -o size=1k tmpfs /app/src && "
                 # BUG-003: Hide /proc (except Java which needs /proc/self/exe)
                 f"{proc_mask}"
+                # BUG-007: Ephemeral /tmp with noexec,nosuid,nodev
+                f"mount -t tmpfs -o {noexec_tmpfs}size={tmpfs_size}m,mode=1777 tmpfs /tmp && "
+                # BUG-008: Lock down other writable paths
+                f"mount -t tmpfs -o {noexec_tmpfs}size=1m,mode=1777 tmpfs /var/tmp && "
+                f"mount -t tmpfs -o {noexec_tmpfs}size=1m,mode=1777 tmpfs /run/lock && "
+                f"mount -t tmpfs -o {noexec_tmpfs}size=1m,mode=1733 tmpfs /var/lib/php/sessions && "
+                # BUG-008: skill-deps nosuid,nodev (not noexec — installed CLIs need exec)
+                f"(test -d {shlex.quote(deps_path)} && "
+                f"mount --bind {shlex.quote(deps_path)} {shlex.quote(deps_path)} && "
+                f"mount -o remount,bind,nosuid,nodev {shlex.quote(deps_path)} "
+                f"|| true) && "
                 # Execute nsjail
                 f"{nsjail_cmd}"
             )
@@ -164,6 +195,7 @@ class SandboxExecutor:
     def _build_sanitized_env(self, language: Optional[str]) -> Dict[str, str]:
         """Build environment whitelist for execution."""
         normalized_lang = (language or "").lower().strip()
+        deps_root = settings.skill_deps_path  # e.g. /opt/skill-deps
 
         env_whitelist: Dict[str, str] = {
             "PATH": "/usr/local/bin:/usr/bin:/bin",
@@ -173,11 +205,15 @@ class SandboxExecutor:
         }
 
         if normalized_lang in {"py", "python"}:
+            # PYTHONPATH includes the persistent skill-deps cache so installs
+            # from earlier executions (or other sessions) are importable. The
+            # cache lives under /opt/skill-deps and is mounted from a Docker
+            # named volume so it survives container restarts.
             env_whitelist.update(
                 {
                     "PYTHONUNBUFFERED": "1",
                     "PYTHONDONTWRITEBYTECODE": "1",
-                    "PYTHONPATH": "/mnt/data",
+                    "PYTHONPATH": f"{deps_root}/python:/mnt/data",
                     "MPLCONFIGDIR": "/tmp/mplconfig",
                     "XDG_CACHE_HOME": "/tmp/.cache",
                     "XDG_CONFIG_HOME": "/tmp/.config",
@@ -187,7 +223,9 @@ class SandboxExecutor:
         elif normalized_lang in {"js", "ts"}:
             env_whitelist.update(
                 {
-                    "NODE_PATH": "/usr/lib/node_modules:/usr/local/lib/node_modules",
+                    "NODE_PATH": (
+                        f"{deps_root}/node/lib/node_modules:/usr/local/lib/node_modules"
+                    ),
                 }
             )
         elif normalized_lang == "java":
@@ -252,6 +290,67 @@ class SandboxExecutor:
                 }
             )
         # bash and d use default PATH/HOME/TMPDIR only
+
+        # When sandbox network access is enabled, route outbound HTTPS through
+        # the inline egress proxy (allowlist-enforced) and point EVERY
+        # package manager at the persistent skill-deps cache. We set all of
+        # these regardless of `language` because skills routinely shell out
+        # — a bash skill might `pip install`, `npm install -g`, `go get`,
+        # etc. Limiting these to the matching language broke the bash case
+        # (no NPM_CONFIG_PREFIX → `npm -g` tries /usr/lib/node_modules).
+        # The proxy listens on 127.0.0.1 inside the API container's network
+        # namespace; sandboxes share that namespace via nsjail's
+        # --disable_clone_newnet so 127.0.0.1 reaches the proxy.
+        if settings.enable_sandbox_network:
+            proxy_url = f"http://127.0.0.1:{settings.sandbox_egress_port}"
+            env_whitelist.update(
+                {
+                    "HTTPS_PROXY": proxy_url,
+                    "https_proxy": proxy_url,
+                    "HTTP_PROXY": proxy_url,
+                    "http_proxy": proxy_url,
+                    "NO_PROXY": "127.0.0.1,localhost",
+                    "no_proxy": "127.0.0.1,localhost",
+                    # Python: pip installs land in the persistent cache.
+                    "PIP_TARGET": f"{deps_root}/python",
+                    "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+                    # Node: -g installs land in the persistent cache.
+                    "NPM_CONFIG_PREFIX": f"{deps_root}/node",
+                    "NPM_CONFIG_CACHE": f"{deps_root}/node/.npm-cache",
+                    # Go: module cache is persistent.
+                    "GOPATH": f"{deps_root}/go",
+                    "GOMODCACHE": f"{deps_root}/go/pkg/mod",
+                    # Rust: crates.io cache is persistent.
+                    "CARGO_HOME": f"{deps_root}/cargo",
+                }
+            )
+            # Make installed binaries immediately usable on PATH (npm -g, pip
+            # console scripts, cargo bins). Prepend so they win over system
+            # equivalents inside the sandbox.
+            env_whitelist["PATH"] = (
+                f"{deps_root}/node/bin:{deps_root}/python/bin:"
+                f"{deps_root}/cargo/bin:{deps_root}/go/bin:"
+                f"{env_whitelist['PATH']}"
+            )
+            # Runtime import paths so freshly-installed packages are loadable
+            # without further config. These have to be set for EVERY language
+            # (not just py/js) because skills routinely shell out — a bash
+            # skill might `node -e "require('foo')"` after `npm install -g foo`.
+            # If a language already set its own PYTHONPATH/NODE_PATH above,
+            # prepend the deps cache so it wins for newly-installed packages.
+            existing_pythonpath = env_whitelist.get("PYTHONPATH", "")
+            env_whitelist["PYTHONPATH"] = (
+                f"{deps_root}/python:{existing_pythonpath}"
+                if existing_pythonpath
+                else f"{deps_root}/python:/mnt/data"
+            )
+            existing_node_path = env_whitelist.get("NODE_PATH", "")
+            node_dep_path = f"{deps_root}/node/lib/node_modules"
+            env_whitelist["NODE_PATH"] = (
+                f"{node_dep_path}:{existing_node_path}"
+                if existing_node_path
+                else f"{node_dep_path}:/usr/local/lib/node_modules"
+            )
 
         return env_whitelist
 
