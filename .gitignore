@@ -200,7 +200,12 @@ config/local.py
 *.db-shm
 
 # EXI-DLP: proprietary assets (templates, logos) are mounted at runtime via Docker volume
-# They must NOT be committed to this public fork
+# They must NOT be committed to this public fork.
+#
+# NOTE: skills/ scripts and AGENT_INSTRUCTIONS.md ARE kept in the repo as a
+# development fallback (docker-compose.yml uses ${SKILLS_PATH:-./skills}).
+# In production, skills are injected via volume mount from ~/data/skills/.
+# See docker/nsjail-base.cfg and ~/LibreChat/deploy-compose.override.yml.
 skills/docx/templates/corporate/
 skills/pptx/templates/corporate/
 Docx_Examples_for_templates_establishment_purpose/

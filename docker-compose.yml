@@ -30,6 +30,10 @@ services:
       # ENABLE_SANDBOX_NETWORK=true so future executions reuse the install.
       # Survives container restarts; purge with POST /api/v1/admin/skill-deps/purge.
       - skill-deps:/opt/skill-deps
+      # Skills directory mounted from host. Default = ./skills (repo fallback
+      # for dev). In production, override via SKILLS_PATH env var to point to
+      # ~/data/skills/ or similar. Read-only — sandbox cannot modify skills.
+      - ${SKILLS_PATH:-./skills}:/opt/skills:ro
       # SSL_CERTS_PATH is a host path; SSL_CERT_FILE and SSL_KEY_FILE must point
       # to the mounted files inside the container under /app/ssl.
       - ${SSL_CERTS_PATH:-./ssl}:/app/ssl:ro

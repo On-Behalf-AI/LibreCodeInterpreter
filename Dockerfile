@@ -242,7 +242,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ============================================
 RUN mkdir -p /var/lib/code-interpreter/sandboxes && \
     mkdir -p /mnt/data && \
-    mkdir -p /var/lib/code-interpreter/empty_proc
+    mkdir -p /var/lib/code-interpreter/empty_proc && \
+    mkdir -p /opt/skills
 
 RUN groupadd -g 1001 codeuser && \
     useradd -u 1001 -g codeuser -m codeuser && \
@@ -300,7 +301,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY src/ /app/src/
 COPY dashboard/ /app/dashboard/
-COPY skills/ /opt/skills/
+
+# Skills are NOT baked into the image. They are mounted at runtime via Docker
+# volume from the deployment layer (default: ./skills, prod: ~/data/skills).
+# See docker-compose.yml for the dev fallback and deploy-compose.override.yml
+# in the LibreChat deployment for production. This keeps the image as a pure
+# runtime (LibreOffice, pandoc, fonts, sandbox config) and allows skills to be
+# updated without rebuilding the image.
 
 RUN find / -path /proc -prune -o -path /sys -prune -o \
     \( -perm -4000 -o -perm -2000 \) -type f -exec chmod u-s,g-s {} + 2>/dev/null || true
