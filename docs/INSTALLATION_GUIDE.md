@@ -1,85 +1,213 @@
-# Guide d'installation — LibreCodeInterpreter Agent Runtime
+# Guide de déploiement — LibreCodeInterpreter (branche `feat/agent-skills-runtime`)
 
-Ce guide permet de déployer LibreCodeInterpreter avec le runtime enrichi pour les 6 agents LibreChat (DOCX, PPTX, XLSX, PDF, FFmpeg, DataViz) sur un serveur où LibreChat est déjà en place.
+Ce guide décrit comment redéployer **à l'identique du VPS `vmi2994848` (chat-dev.onbehalf.ai)** la stack LibreCodeInterpreter (image runtime + Redis + MinIO + skills mount) sur un nouveau serveur, intégrée à une instance LibreChat déjà en place.
 
-## Prérequis
+État reflété par ce guide : commit `61d860c` ("refactor: decouple skills from Docker image — Phase 1"). Les skills (scripts, instructions, templates) ne sont plus *bakées* dans l'image Docker ; elles sont montées au runtime depuis le filesystem hôte.
 
-- **LibreChat** déjà installé et fonctionnel (avec MongoDB, API, NGINX)
-- **Docker** 24.0+ avec Docker Compose v2.20+
-- **Git** configuré avec accès au repo `Acme-Corp/LibreCodeInterpreter`
-- **~10 Go** d'espace disque pour l'image Docker (~8.8 Go)
-- Le serveur doit avoir les ports suivants libres en local :
-  - `8010` (code-interpreter API, bind sur 127.0.0.1)
-  - Redis et MinIO internes au compose
+---
 
-## Étape 1 — Cloner le repo et basculer sur la branche
+## 0. Architecture cible
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Réseau Docker `librechat_default`                            │
+│                                                              │
+│  ┌────────────┐   HTTP    ┌──────────────────────────┐       │
+│  │ LibreChat  │──────────▶│ code-interpreter-api      │       │
+│  │ API        │  :8000    │ (image runtime pur)       │       │
+│  └────────────┘           │  nsjail / PTC / sandbox   │       │
+│                           └─────────┬────────────────┘       │
+│                                     │                        │
+│           ┌─────────────────────────┼─────────────────┐      │
+│           ▼                         ▼                 ▼      │
+│  ┌──────────────────┐    ┌──────────────────┐  ┌──────────┐  │
+│  │ code-interpreter │    │ code-interpreter │  │  Volume  │  │
+│  │   -redis         │    │   -minio         │  │  bind    │  │
+│  │  (sessions)      │    │  (S3 files)      │  │ skills/  │  │
+│  └──────────────────┘    └──────────────────┘  └──────────┘  │
+│                                                       ▲      │
+└───────────────────────────────────────────────────────┼──────┘
+                                                       │
+                          /home/damien/data/skills/  ──┘
+                          (sur l'hôte, monté :ro)
+```
+
+Le container `code-interpreter-api` :
+
+- N'expose **aucun port** en dehors de `127.0.0.1:8010` (R1.a PSSI).
+- Tourne en `privileged: true` (nsjail crée des namespaces utilisateur).
+- Reçoit les skills via **volume mount** `~/data/skills:/opt/skills:ro` — un rebuild n'est plus nécessaire pour modifier un script ou un template.
+- Utilise **MinIO** comme stockage S3 (la stack upstream pointe sur Garage ; sur ce VPS le `.env` map les vars `S3_*` sur MinIO existant).
+
+---
+
+## 1. Prérequis sur le nouveau serveur
+
+| Élément | Version / Détail |
+|---------|------------------|
+| OS | Ubuntu 22.04 ou 24.04 (testé sur les deux) |
+| Docker Engine | ≥ 24.0 |
+| Docker Compose | ≥ v2.24.4 (pour `!override`) |
+| Espace disque | ≥ 12 Go libres (image = 8.86 Go + volumes) |
+| RAM libre | ≥ 1.5 Go pour la stack code-interpreter seule |
+| Kernel | Support des user namespaces + cgroups v2 (par défaut sur Ubuntu 22.04+) |
+| Git | ≥ 2.30 |
+| **LibreChat** | Déjà déployé et fonctionnel, avec MongoDB + API + reverse proxy |
+
+Ports requis (locaux uniquement, bind `127.0.0.1`) :
+
+- `8010` — code-interpreter API (mappe sur `8000` du container)
+- `9000`, `9001` — MinIO (API + console)
+- `6379` — Redis (interne à la stack, non publié)
+
+---
+
+## 2. Préparation de l'arborescence hôte
 
 ```bash
-cd /home/damien  # ou votre répertoire de travail
-git clone https://github.com/Acme-Corp/LibreCodeInterpreter.git
+# Répertoires standards (adapter le user/group à votre infra)
+sudo mkdir -p /home/damien/data/skills
+sudo chown -R damien:damien /home/damien/data
+```
+
+> Sur le VPS actuel : le propriétaire des fichiers `.env` est `damien:projet` (GID 1003) avec permissions `0660`. Adapter si vous utilisez un autre groupe partagé.
+
+---
+
+## 3. Cloner le repo et basculer sur la branche
+
+```bash
+cd /home/damien
+git clone https://github.com/On-Behalf-AI/LibreCodeInterpreter.git
 cd LibreCodeInterpreter
 git checkout feat/agent-skills-runtime
 git pull origin feat/agent-skills-runtime
 ```
 
-## Étape 2 — Configurer le .env
+> Le **nom exact de la branche** est `feat/agent-skills-runtime`. Sur le VPS actuel, le déploiement tourne depuis `merge/main-into-feat-skills-2026-05-14` (la branche d'intégration qui rebase régulièrement `feat/agent-skills-runtime` sur `main`). Pour un nouveau déploiement, partir directement de `feat/agent-skills-runtime` est plus simple.
+
+---
+
+## 4. Copier les skills dans `~/data/skills`
+
+Les skills sont **séparées de l'image** depuis le commit `61d860c`. Le repo fournit la version "corporate" par défaut dans `skills/` — à copier sur l'hôte une fois pour toutes :
+
+```bash
+cd /home/damien/LibreCodeInterpreter
+
+# IMPORTANT : -L pour résoudre le symlink pptx/scripts/office -> docx/scripts/office.
+# Sans -L, le mount Docker verrait un symlink cassé.
+cp -rL skills/. /home/damien/data/skills/
+
+# Vérification
+ls /home/damien/data/skills/
+# Attendu : dataviz docx ffmpeg pdf pptx xlsx
+
+# Le dossier office doit être un VRAI directory (pas un symlink) côté pptx :
+test -d /home/damien/data/skills/pptx/scripts/office && \
+  ! -L /home/damien/data/skills/pptx/scripts/office && \
+  echo "OK"
+```
+
+Pour des templates client, voir §11 « Personnalisation des templates ».
+
+---
+
+## 5. Configurer le `.env` de code-interpreter
 
 Créer `/home/damien/LibreCodeInterpreter/.env` :
 
 ```bash
-cat > .env << 'EOF'
+cat > /home/damien/LibreCodeInterpreter/.env << EOF
 # Code Interpreter API Configuration
 
 # ── Authentication ──────────────────────────────────────────────
-API_KEY=<GÉNÉRER_AVEC: openssl rand -hex 32>
+# Génération : openssl rand -hex 32
+# IMPORTANT : cette clé doit être recopiée à l'identique dans LE .env de
+# LibreChat (variable LIBRECHAT_CODE_API_KEY) — voir §8.
+API_KEY=$(openssl rand -hex 32)
 
 # ── Redis ───────────────────────────────────────────────────────
-REDIS_HOST=code-interpreter-redis
+REDIS_HOST=localhost     # override à 'code-interpreter-redis' via compose env
 REDIS_PORT=6379
 
-# ── MinIO / S3 ─────────────────────────────────────────────────
-MINIO_ENDPOINT=code-interpreter-minio:9000
+# ── MinIO (legacy var, conservée pour les scripts internes) ────
+MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 
+# ── S3 (cible effective : MinIO via ces vars depuis le refactor upstream) ──
+S3_ENDPOINT=code-interpreter-minio:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET=code-interpreter-files
+S3_SECURE=false
+S3_REGION=us-east-1
+
 # ── Sandbox Pool ────────────────────────────────────────────────
-SANDBOX_POOL_ENABLED=true
-REPL_ENABLED=true
+# Désactivé sur le VPS actuel pour économiser la RAM (charge variable).
+# Mettre à true sur un serveur dédié pour pré-chauffer 5 REPL Python.
+SANDBOX_POOL_ENABLED=false
+REPL_ENABLED=false
 
-# ── Sandbox Network ──────────────────────────────────────────
-ENABLE_SANDBOX_NETWORK=false
+# ── Sandbox Network ─────────────────────────────────────────────
+# true = sandbox peut faire pip/npm install et appeler des APIs externes
+# (passe par un proxy d'allowlist anti-SSRF).
+ENABLE_SANDBOX_NETWORK=true
 
-# ── Sandbox Timeout ──────────────────────────────────────────
-MAX_EXECUTION_TIME=120
+# ── Sandbox Timeout ─────────────────────────────────────────────
+# 300s (vs 30s par défaut) pour laisser le temps aux jobs Azure Translator,
+# pandoc lourd, ffmpeg, etc.
+MAX_EXECUTION_TIME=300
 
-# ── Logging ────────────────────────────────────────────────────
-LOG_LEVEL=info
+# ── Logging ─────────────────────────────────────────────────────
+LOG_LEVEL=INFO
 LOG_FORMAT=json
 EOF
+
+chmod 660 /home/damien/LibreCodeInterpreter/.env
+chown damien:projet /home/damien/LibreCodeInterpreter/.env  # ajuster le groupe
 ```
 
-> **IMPORTANT** : Le `API_KEY` ici est celui que LibreChat utilise pour communiquer avec le code-interpreter. Il doit correspondre à la configuration de LibreChat.
+**Notes** :
 
-## Étape 3 — Build de l'image Docker
+- `API_KEY` est la clé que LibreChat utilisera pour s'authentifier auprès du code-interpreter. **Conservez-la**, elle resservira au §8.
+- `MINIO_*` et `S3_*` pointent **deux fois** les mêmes credentials. C'est volontaire : le refactor upstream `64b4494` a renommé les vars `MINIO_*` → `S3_*` pour passer à Garage. Sur ce VPS on garde MinIO, donc on map les nouvelles vars `S3_*` vers MinIO.
+- `SANDBOX_EGRESS_ALLOWLIST` n'est PAS dans le `.env` : elle est définie dans le compose (§7) car spécifique au bridge fichiers optionnel (§10).
+
+---
+
+## 6. Builder l'image Docker
 
 ```bash
+cd /home/damien/LibreCodeInterpreter
 docker build --target app -t code-interpreter:agent-skills .
 ```
 
-> **Durée** : 30-45 min la première fois (téléchargement de LibreOffice, Node.js packages, Python packages). Les builds suivants sont rapides (~2-5s) grâce au cache Docker — seul le layer `COPY skills/` est recalculé.
+- **Durée** : ~30–45 min au premier build (téléchargement LibreOffice + pandoc + ffmpeg + Python packages).
+- **Builds suivants** : ~2–5 s grâce au cache Docker — depuis le commit `61d860c`, l'image **ne contient plus** les skills donc une modif de `skills/` ne déclenche aucun rebuild.
+- Si le build échoue sur `apt-get update` (mirrors Ubuntu en sync), relancer après quelques minutes.
 
-> **Si le build échoue** sur `apt-get update` : les mirrors Ubuntu peuvent être en sync. Relancez le build après quelques minutes.
+L'image finale fait **~8.9 Go** (LibreOffice + R + Python + Node + Go).
 
-## Étape 4 — Intégrer dans le compose LibreChat
+---
 
-Ajouter dans le `deploy-compose.override.yml` de LibreChat (typiquement `/home/damien/LibreChat/deploy-compose.override.yml`) :
+## 7. Ajouter les services dans `deploy-compose.override.yml` de LibreChat
+
+Éditer `/home/damien/LibreChat/deploy-compose.override.yml` et ajouter dans `services:` les 4 services suivants. **Adapter** les labels `security.*` si vous n'utilisez pas la PSSI onbehalf.ai (sinon supprimer les blocs `labels:`).
 
 ```yaml
 services:
+
   code-interpreter-api:
+    labels:
+      security.managed: "true"
+      security.stack: "librechat"
+      security.update.method: "build"
+      security.update.policy: "code-interpreter.yaml"
     build: /home/damien/LibreCodeInterpreter
-    container_name: code-interpreter-api
     image: code-interpreter:agent-skills
+    container_name: code-interpreter-api
     init: true
     privileged: true
     restart: unless-stopped
@@ -92,12 +220,8 @@ services:
     environment:
       - REDIS_HOST=code-interpreter-redis
       - MINIO_ENDPOINT=code-interpreter-minio:9000
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8000/health"]
-      interval: 30s
-      timeout: 15s
-      retries: 3
-      start_period: 30s
+      # Décommenter UNIQUEMENT si vous configurez le bridge §10
+      # - SANDBOX_EGRESS_ALLOWLIST=code-files.example.com
     ports:
       - 127.0.0.1:8010:8000
     tmpfs:
@@ -105,25 +229,37 @@ services:
     volumes:
       - code-interpreter-sandbox-data:/var/lib/code-interpreter/sandboxes
       - /home/damien/LibreCodeInterpreter/ssl:/app/ssl:ro
+      - /home/damien/data/skills:/opt/skills:ro
     depends_on:
       code-interpreter-minio-init:
         condition: service_completed_successfully
       code-interpreter-redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8000/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
     networks:
       - default
 
   code-interpreter-redis:
+    labels:
+      security.managed: "true"
+      security.stack: "librechat"
+      security.update.method: "pull"
+      security.update.policy: "code-interpreter.yaml"
     image: redis:7-alpine
     container_name: code-interpreter-redis
     restart: unless-stopped
-    command: >
-      redis-server --appendonly yes --appendfsync everysec
-      --maxmemory 256mb --maxmemory-policy allkeys-lru
     deploy:
       resources:
         limits:
           memory: 256M
+    command: >
+      redis-server --appendonly yes --appendfsync everysec
+      --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -133,26 +269,42 @@ services:
       - code-interpreter-redis-data:/data
 
   code-interpreter-minio:
+    labels:
+      security.managed: "true"
+      security.stack: "librechat"
+      security.update.method: "pull"
+      security.update.policy: "code-interpreter.yaml"
     image: minio/minio:latest
     container_name: code-interpreter-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
     deploy:
       resources:
         limits:
           memory: 256M
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # Décommenter UNIQUEMENT si vous configurez le bridge §10
+      # MINIO_SERVER_URL: https://code-files.example.com
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
+    ports:
+      # R1.a PSSI : bind localhost seulement. Accès externe via Caddy
+      # (cf §10 bridge optionnel).
+      - 127.0.0.1:9000:9000
     volumes:
       - code-interpreter-minio-data:/data
 
   code-interpreter-minio-init:
+    labels:
+      security.managed: "true"
+      security.stack: "librechat"
+      security.update.method: "pull"
+      security.update.policy: "code-interpreter.yaml"
     image: minio/mc:latest
     depends_on:
       code-interpreter-minio:
@@ -170,429 +322,277 @@ volumes:
   code-interpreter-minio-data:
 ```
 
-## Étape 5 — Configurer LibreChat pour utiliser le code-interpreter
+---
 
-Dans `librechat.yaml` de LibreChat, s'assurer que le `codeInterpreter` est configuré :
+## 8. Modifier le `.env` de LibreChat
 
-```yaml
-# Dans la section endpoints ou interface
-codeInterpreter:
-  url: http://code-interpreter-api:8000
-  apiKey: <MÊME_CLÉ_QUE_DANS_LE_.ENV>
-```
-
-> Vérifier que l'URL correspond au nom du container (`code-interpreter-api`) et au port interne (`8000`).
-
-## Étape 6 — Lancer les services
+Ajouter ces variables dans `/home/damien/LibreChat/.env` :
 
 ```bash
-cd /home/damien/LibreChat
-docker compose -f deploy-compose.yml -f deploy-compose.override.yml -p librechat_clean up -d code-interpreter-api
+# ─── Code Interpreter integration ─────────────────────────────
+# Clé identique à API_KEY du .env de code-interpreter (§5)
+LIBRECHAT_CODE_API_KEY=<COLLER_ICI_LA_VALEUR_DE_API_KEY_DU_§5>
+
+# Format "user-in-URL" (RFC 3986) : l'API key sert d'identifiant Basic auth.
+# Le hostname DOIT correspondre au container_name (§7) et au port interne 8000.
+LIBRECHAT_CODE_BASEURL=http://<API_KEY_IDENTIQUE>@code-interpreter-api:8000
+
+# ─── MinIO credentials (utilisées par le compose §7) ──────────
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=minioadmin
 ```
 
-Vérifier que le container est healthy :
+> **Sécurité prod** : changer `minioadmin` / `minioadmin` pour des valeurs aléatoires. Sur le VPS actuel on les a gardés car MinIO n'est pas exposé hors du host (R1.a). Si vous activez le bridge §10, **changez impérativement** ces credentials.
 
-```bash
-docker ps --filter "name=code-interpreter-api" --format "{{.Names}} {{.Status}}"
-# Attendu : code-interpreter-api Up X seconds (healthy)
-```
-
-Tester le health check :
-
-```bash
-curl -s http://127.0.0.1:8010/health
-# Attendu : {"status":"healthy","version":"1.2.0","service":"code-interpreter-api"}
-```
-
-## Étape 7 — Créer les 6 agents dans LibreChat
-
-Les agents sont stockés dans MongoDB. Exécuter le script suivant dans le container MongoDB :
-
-```bash
-docker exec -i chat-mongodb mongosh --quiet LibreChat << 'MONGOEOF'
-
-// === Agent 1 : Word DOCX Complete ===
-db.agents.insertOne({
-  id: "agent_docx_complete",
-  name: "Word DOCX Complete",
-  description: "Création, édition et manipulation de documents Word avec tracked changes, comments, et conversion PDF.",
-  provider: "anthropic",
-  model: "claude-sonnet-4.5",
-  category: "documents",
-  tools: ["execute_code"],
-  model_parameters: {},
-  recursion_limit: 25,
-  artifacts: "enabled",
-  hide_sequential_outputs: false,
-  end_after_tools: false,
-  conversation_starters: [
-    "Crée un document Word professionnel",
-    "Modifie ce DOCX avec tracked changes",
-    "Convertis ce document en PDF",
-    "Ajoute des commentaires à ce DOCX"
-  ],
-  author: "<USER_ID>",
-  authorName: "<VOTRE_NOM>",
-  instructions: "",
-  projectIds: [],
-  versions: [],
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  is_promoted: false,
-  mcpServerNames: [],
-  support_contact: { name: "", email: "" }
-});
-
-// === Agent 2 : PowerPoint PPTX ===
-db.agents.insertOne({
-  id: "agent_pptx_complete",
-  name: "PowerPoint PPTX",
-  description: "Création et édition de présentations PowerPoint professionnelles.",
-  provider: "anthropic",
-  model: "claude-sonnet-4.5",
-  category: "documents",
-  tools: ["execute_code"],
-  model_parameters: {},
-  recursion_limit: 25,
-  artifacts: "enabled",
-  hide_sequential_outputs: false,
-  end_after_tools: false,
-  conversation_starters: [
-    "Crée une présentation PowerPoint",
-    "Édite ce PPTX existant",
-    "Génère des slides à partir de ce contenu",
-    "Analyse ce template PPTX"
-  ],
-  author: "<USER_ID>",
-  authorName: "<VOTRE_NOM>",
-  instructions: "",
-  projectIds: [],
-  versions: [],
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  is_promoted: false,
-  mcpServerNames: [],
-  support_contact: { name: "", email: "" }
-});
-
-// === Agent 3 : Excel XLSX ===
-db.agents.insertOne({
-  id: "agent_xlsx_complete",
-  name: "Excel XLSX",
-  description: "Manipulation de fichiers Excel : création, analyse, formules, graphiques.",
-  provider: "anthropic",
-  model: "claude-sonnet-4.5",
-  category: "documents",
-  tools: ["execute_code"],
-  model_parameters: {},
-  recursion_limit: 25,
-  artifacts: "enabled",
-  hide_sequential_outputs: false,
-  end_after_tools: false,
-  conversation_starters: [
-    "Crée un tableau Excel avec formules",
-    "Analyse ce fichier Excel",
-    "Ajoute un graphique à ce XLSX",
-    "Recalcule les formules de ce fichier"
-  ],
-  author: "<USER_ID>",
-  authorName: "<VOTRE_NOM>",
-  instructions: "",
-  projectIds: [],
-  versions: [],
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  is_promoted: false,
-  mcpServerNames: [],
-  support_contact: { name: "", email: "" }
-});
-
-// === Agent 4 : PDF ===
-db.agents.insertOne({
-  id: "agent_pdf_complete",
-  name: "PDF",
-  description: "Manipulation de PDFs : extraction, fusion, OCR, conversion, watermark.",
-  provider: "anthropic",
-  model: "claude-sonnet-4.5",
-  category: "documents",
-  tools: ["execute_code"],
-  model_parameters: {},
-  recursion_limit: 25,
-  artifacts: "enabled",
-  hide_sequential_outputs: false,
-  end_after_tools: false,
-  conversation_starters: [
-    "Extrais le texte de ce PDF",
-    "Fusionne ces fichiers PDF",
-    "Extrais les tableaux de ce PDF",
-    "Fais un OCR sur ce PDF scanné"
-  ],
-  author: "<USER_ID>",
-  authorName: "<VOTRE_NOM>",
-  instructions: "",
-  projectIds: [],
-  versions: [],
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  is_promoted: false,
-  mcpServerNames: [],
-  support_contact: { name: "", email: "" }
-});
-
-// === Agent 5 : Quick Edits (FFmpeg) ===
-db.agents.insertOne({
-  id: "agent_quick_edits",
-  name: "Quick Edits (FFmpeg)",
-  description: "Manipulation de fichiers médias : conversion vidéo, extraction audio, redimensionnement images.",
-  provider: "anthropic",
-  model: "claude-sonnet-4.5",
-  category: "media",
-  tools: ["execute_code"],
-  model_parameters: {},
-  recursion_limit: 25,
-  artifacts: "enabled",
-  hide_sequential_outputs: false,
-  end_after_tools: false,
-  conversation_starters: [
-    "Convertis cette vidéo en MP4",
-    "Extrais l'audio de cette vidéo",
-    "Redimensionne cette image",
-    "Découpe cette vidéo de 0:30 à 1:45"
-  ],
-  author: "<USER_ID>",
-  authorName: "<VOTRE_NOM>",
-  instructions: "",
-  projectIds: [],
-  versions: [],
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  is_promoted: false,
-  mcpServerNames: [],
-  support_contact: { name: "", email: "" }
-});
-
-// === Agent 6 : Data Analysis & Visualization ===
-db.agents.insertOne({
-  id: "agent_data_viz",
-  name: "Data Analysis & Visualization",
-  description: "Analyse de données et visualisation : pandas, matplotlib, seaborn, sklearn.",
-  provider: "google",
-  model: "gemini-2.5-pro",
-  category: "analysis",
-  tools: ["execute_code"],
-  model_parameters: { temperature: 0.4 },
-  recursion_limit: 25,
-  artifacts: "enabled",
-  hide_sequential_outputs: false,
-  end_after_tools: false,
-  conversation_starters: [
-    "Analyse ce fichier CSV",
-    "Crée un graphique à partir de ces données",
-    "Fais une analyse statistique de ce dataset",
-    "Génère un dashboard de visualisation"
-  ],
-  author: "<USER_ID>",
-  authorName: "<VOTRE_NOM>",
-  instructions: "",
-  projectIds: [],
-  versions: [],
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  is_promoted: false,
-  mcpServerNames: [],
-  support_contact: { name: "", email: "" }
-});
-
-print("6 agents created successfully");
-MONGOEOF
-```
-
-> **IMPORTANT** : Remplacer `<USER_ID>` par votre ObjectId utilisateur MongoDB (trouvable avec `db.users.findOne({name: "VotreNom"})._id`) et `<VOTRE_NOM>` par votre nom d'affichage.
-
-## Étape 8 — Injecter les instructions des agents
-
-Les instructions sont stockées dans les fichiers `AGENT_INSTRUCTIONS.md` du repo. Les injecter dans MongoDB :
-
-```bash
-cd /home/damien/LibreCodeInterpreter
-
-# Script d'injection pour les 6 agents
-for agent_dir in "docx:agent_docx_complete" "pptx:agent_pptx_complete" "xlsx:agent_xlsx_complete" "pdf:agent_pdf_complete" "ffmpeg:agent_quick_edits" "dataviz:agent_data_viz"; do
-    DIR="${agent_dir%%:*}"
-    AGENT_ID="${agent_dir##*:}"
-    FILE="skills/$DIR/AGENT_INSTRUCTIONS.md"
-    
-    if [ -f "$FILE" ]; then
-        cat > /tmp/update_agent.js << JSEOF
-const fs = require('fs');
-const instructions = fs.readFileSync('/home/damien/LibreCodeInterpreter/$FILE', 'utf8');
-const escaped = JSON.stringify(instructions);
-const cmd = 'db.agents.updateOne({id:"$AGENT_ID"},{\\$set:{instructions:' + escaped + ',"versions.0.instructions":' + escaped + '}})';
-fs.writeFileSync('/tmp/update_mongo.js', cmd);
-JSEOF
-        node /tmp/update_agent.js
-        docker exec -i chat-mongodb mongosh --quiet LibreChat < /tmp/update_mongo.js
-        echo "✓ $AGENT_ID updated from $FILE"
-    else
-        echo "✗ $FILE not found"
-    fi
-done
-```
-
-## Étape 9 — Migrer les permissions des agents
-
-Si LibreChat requiert une migration des permissions pour les agents :
-
-```bash
-# Vérifier si le script existe dans votre version de LibreChat
-ls /home/damien/LibreChat/api/config/migrate-agent-permissions.js 2>/dev/null
-
-# Si oui, l'exécuter dans le container API
-docker exec LibreChat-API node /app/api/config/migrate-agent-permissions.js
-```
-
-## Étape 10 — Vérification
-
-### Vérifier les containers
-
-```bash
-docker ps --filter "name=code-interpreter" --format "table {{.Names}}\t{{.Status}}"
-```
-
-Attendu :
-```
-NAMES                     STATUS
-code-interpreter-api      Up X minutes (healthy)
-code-interpreter-redis    Up X minutes (healthy)
-code-interpreter-minio    Up X minutes (healthy)
-```
-
-### Vérifier les agents dans LibreChat
-
-```bash
-docker exec chat-mongodb mongosh --quiet --eval "
-db.agents.find({id: /^agent_/}, {id:1, name:1, instructions:1}).forEach(a => {
-    print(a.id + ' | ' + a.name + ' | instructions: ' + (a.instructions || '').length + ' chars');
-})
-" LibreChat
-```
-
-Attendu : 6 agents avec des instructions de 2000-20000 chars chacun.
-
-### Tester un agent via l'API
-
-```bash
-# Créer une API key pour les tests
-docker exec LibreChat-API node -e '
-const mongoose = require("mongoose");
-const { agentApiKeySchema, createMethods } = require("@librechat/data-schemas");
-async function main() {
-    await mongoose.connect(process.env.MONGO_URI || "mongodb://chat-mongodb:27017/LibreChat");
-    if (!mongoose.models.AgentApiKey) mongoose.model("AgentApiKey", agentApiKeySchema);
-    const methods = createMethods(mongoose);
-    const result = await methods.createAgentApiKey({userId: "<USER_ID>", name: "test"});
-    console.log("API Key: " + result.key);
-    await mongoose.disconnect();
-}
-main().catch(console.error);
-'
-
-# Tester un appel agent
-curl -s -X POST http://127.0.0.1:3080/api/agents/v1/responses \
-  -H "Authorization: Bearer <API_KEY_CI_DESSUS>" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "agent_docx_complete", "input": "Dis bonjour.", "stream": false}' \
-  | python3 -m json.tool | head -20
-```
-
-### Tester via l'interface web
-
-Ouvrir `https://<votre-domaine>/c/new?agent_id=agent_docx_complete` et demander : "Crée un guide d'installation Docker".
+> **Format `user@host`** : LibreChat n'a pas de champ « API key » distinct pour le code-interpreter, il extrait la credential du userinfo de l'URL. Le serveur valide via header `Authorization: Basic base64("<KEY>:")`.
 
 ---
 
-## Mise à jour ultérieure
+## 9. Démarrer les services et vérifier
 
-Pour mettre à jour après des modifications sur la branche :
+```bash
+cd /home/damien/LibreChat
+
+# Démarrer la stack code-interpreter (les autres services LibreChat
+# ne sont pas touchés)
+docker compose \
+  -f deploy-compose.yml -f deploy-compose.override.yml \
+  up -d code-interpreter-minio code-interpreter-minio-init \
+        code-interpreter-redis code-interpreter-api
+```
+
+> **R9 PSSI** : ne JAMAIS utiliser `docker run` pour redémarrer ces containers — toujours passer par `docker compose -f ... up -d`. Sinon ils perdent leurs labels, healthchecks et limites mémoire.
+
+### Vérifications
+
+```bash
+# 1. Tous les containers sont healthy
+docker ps --filter "name=code-interpreter" \
+  --format "table {{.Names}}\t{{.Status}}"
+# Attendu :
+#   code-interpreter-api      Up X minutes (healthy)
+#   code-interpreter-redis    Up X minutes (healthy)
+#   code-interpreter-minio    Up X minutes (healthy)
+
+# 2. Health endpoint répond
+curl -s http://127.0.0.1:8010/health | python3 -m json.tool
+# Attendu : {"status":"healthy","version":"1.x.x","service":"code-interpreter-api"}
+
+# 3. Authentification OK depuis l'intérieur du réseau Docker
+docker exec LibreChat \
+  curl -sf -H "x-api-key: $(grep ^API_KEY /home/damien/LibreCodeInterpreter/.env | cut -d= -f2)" \
+  http://code-interpreter-api:8000/api/v1/sessions/list
+
+# 4. Les skills sont vues
+docker exec code-interpreter-api ls /opt/skills/
+# Attendu : dataviz docx ffmpeg pdf pptx xlsx
+
+# 5. Test d'exécution depuis le sandbox
+curl -s -X POST http://127.0.0.1:8010/v1/execute \
+  -H "x-api-key: $(grep ^API_KEY /home/damien/LibreCodeInterpreter/.env | cut -d= -f2)" \
+  -H "Content-Type: application/json" \
+  -d '{"language":"python","code":"print(1+1)"}'
+# Attendu : {"output":"2\n", "success":true, ...}
+```
+
+Redémarrer LibreChat-API pour qu'il prenne en compte les nouvelles vars :
+
+```bash
+docker compose -f deploy-compose.yml -f deploy-compose.override.yml \
+  up -d --force-recreate api
+```
+
+Tester côté UI : ouvrir une conversation avec un modèle supportant `execute_code` et lui demander d'exécuter `print("hello")` — l'icône code-interpreter doit apparaître et le résultat s'afficher.
+
+---
+
+## 10. (Optionnel) Bridge fichiers `code-files.<domain>`
+
+Cette section n'est nécessaire **que** si vous voulez que d'autres services (par exemple un adapter n8n) puissent envoyer des fichiers au sandbox via presigned URL — c'est le pattern utilisé sur ce VPS pour le Hermes adapter.
+
+Sans ce bridge, le sandbox accède à MinIO uniquement en interne via le DNS Docker (`code-interpreter-minio:9000`) — suffisant pour le mode LibreChat standard.
+
+### 10.1 DNS
+
+Faire pointer `code-files.<votre-domaine>` vers l'IP publique du VPS (A/AAAA).
+
+### 10.2 Caddy (reverse proxy vers MinIO)
+
+Ajouter dans `/etc/caddy/Caddyfile` :
+
+```caddyfile
+code-files.<votre-domaine> {
+    reverse_proxy 127.0.0.1:9000
+    # Pas d'Authelia ici : MinIO valide lui-même les signatures S3.
+}
+```
+
+`systemctl reload caddy`.
+
+### 10.3 MinIO : URL publique
+
+Dans la section `code-interpreter-minio` du compose (§7), décommenter :
+
+```yaml
+    environment:
+      MINIO_SERVER_URL: https://code-files.<votre-domaine>
+```
+
+### 10.4 Sandbox : autoriser le hostname dans l'allowlist
+
+Dans la section `code-interpreter-api` du compose (§7), décommenter :
+
+```yaml
+    environment:
+      - SANDBOX_EGRESS_ALLOWLIST=code-files.<votre-domaine>
+```
+
+### 10.5 (Si vous avez un service uploader)
+
+Créer un user MinIO scopé write-only sur un bucket dédié (`bridge-transfer`) avec lifecycle 1 jour. Voir le `code-interpreter-minio-init` du VPS pour le snippet (`mc admin user add` + `mc ilm rule add --expire-days 1`).
+
+Restart : `docker compose -f deploy-compose.yml -f deploy-compose.override.yml up -d code-interpreter-api code-interpreter-minio`.
+
+---
+
+## 11. Personnalisation des templates
+
+Depuis Phase 1, les templates vivent dans `~/data/skills/{docx,pptx}/templates/` côté hôte. Pour ajouter un template client :
+
+```bash
+cd /home/damien/data/skills
+
+# DOCX
+mkdir -p docx/templates/<client>
+cp /chemin/vers/client.docx docx/templates/<client>/template-base.docx
+cp /chemin/vers/client_cr.docx docx/templates/<client>/template-compte-rendu.docx
+cp /chemin/vers/client_logo.png docx/templates/<client>/logo.png
+
+# PPTX
+mkdir -p pptx/templates/<client>
+cp /chemin/vers/client.pptx pptx/templates/<client>/template-corporate.pptx
+```
+
+**Aucun rebuild n'est nécessaire** : le mount `:ro` voit les nouveaux fichiers immédiatement. Si vous mettez à jour les `AGENT_INSTRUCTIONS.md` côté skills, restart le container suffit (ou pas même — les instructions sont relues à chaque session) :
+
+```bash
+cd /home/damien/LibreChat
+docker compose -f deploy-compose.yml -f deploy-compose.override.yml \
+  up -d code-interpreter-api
+```
+
+Voir `docs/CREATE_NEW_BRAND_TEMPLATES.md` pour le détail du template DOCX (couleurs, styles, polices, logos) et PPTX (les 12 layouts essentiels).
+
+---
+
+## 12. Mise à jour ultérieure
+
+Quand de nouveaux commits arrivent sur la branche :
 
 ```bash
 cd /home/damien/LibreCodeInterpreter
 git pull origin feat/agent-skills-runtime
 
-# Rebuild l'image (rapide si seul skills/ a changé)
+# Si le diff touche le Dockerfile ou docker/requirements/* → rebuild
 docker build --target app -t code-interpreter:agent-skills .
 
-# Restart le container
+# Si le diff touche skills/* → re-syncer le mount hôte
+cp -rL skills/. /home/damien/data/skills/
+
+# Restart (compose, JAMAIS docker run — R9 PSSI)
 cd /home/damien/LibreChat
 docker compose -f deploy-compose.yml -f deploy-compose.override.yml \
-    -p librechat_clean up -d code-interpreter-api
-
-# Si les instructions ont changé, ré-injecter dans MongoDB
-cd /home/damien/LibreCodeInterpreter
-# (relancer le script d'injection de l'étape 8)
+  up -d code-interpreter-api
 ```
 
-## Personnalisation des templates
+---
 
-### Remplacer le template corporate par celui d'un client
+## 13. (Optionnel) Création des 6 agents LibreChat
+
+Si vous déployez en même temps une nouvelle instance LibreChat (sans agents préexistants), créer les 6 agents qui exploitent le runtime — script complet conservé hors de ce fichier dans le commit historique, ou s'inspirer de ce squelette :
 
 ```bash
-# DOCX : copier les templates du client
-cp client_template.docx skills/docx/templates/<client>/template-base.docx
-cp client_cr.docx skills/docx/templates/<client>/template-compte-rendu.docx
-cp client_logo.png skills/docx/templates/<client>/logo.png
-
-# PPTX : copier le template du client
-cp client_template.pptx skills/pptx/templates/<client>/template-corporate.pptx
-
-# Adapter les AGENT_INSTRUCTIONS.md pour pointer vers les templates du client
-# Puis rebuild + ré-injecter instructions
+docker exec -i chat-mongodb mongosh --quiet LibreChat << 'EOF'
+db.agents.insertOne({
+  id: "agent_docx_complete",
+  name: "Word DOCX Complete",
+  description: "Création/édition de documents Word.",
+  provider: "anthropic",
+  model: "claude-sonnet-4.5",
+  tools: ["execute_code"],
+  recursion_limit: 25,
+  artifacts: "enabled",
+  author: "<USER_ID>",
+  authorName: "<VOTRE_NOM>",
+  instructions: "",   // sera injecté depuis skills/docx/AGENT_INSTRUCTIONS.md
+  versions: [],
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+// + agent_pptx_complete, agent_xlsx_complete, agent_pdf_complete,
+//   agent_quick_edits (ffmpeg), agent_data_viz (gemini-2.5-pro)
+EOF
 ```
 
-### Structure des templates
+Puis injecter les `AGENT_INSTRUCTIONS.md` dans le champ `instructions` de chaque agent via un script Node ou directement via mongosh. Sur le VPS actuel : 6 agents définis dans MongoDB avec instructions de 2000–40000 caractères chacun, peuvent être dumpés avec :
 
-```
-skills/
-├── docx/templates/
-│   ├── corporate/          # Templates Acme Corp (par défaut)
-│   │   ├── template-base.docx
-│   │   ├── template-compte-rendu.docx
-│   │   └── logo.png
-│   └── <client>/            # Templates client (optionnel)
-│       ├── template-base.docx
-│       └── logo.png
-└── pptx/templates/
-    ├── corporate/
-    │   ├── template-oba-corporate.pptx  # 50 layouts
-    │   └── TEMPLATE_REFERENCE.md
-    └── <client>/
-        └── template-corporate.pptx
+```bash
+docker exec chat-mongodb mongodump --db LibreChat --collection agents \
+  --query='{id:/^agent_/}' --out /tmp/dump
 ```
 
-## Résolution de problèmes
+et restaurés ailleurs avec `mongorestore`.
 
-### Le build Docker échoue sur apt-get
+---
 
-```
-E: Failed to fetch http://archive.ubuntu.com/... Mirror sync in progress?
-```
-→ Relancer le build après quelques minutes. Les mirrors Ubuntu ont des fenêtres de sync.
-
-### L'agent ne génère pas de fichier
-
-→ Vérifier que `model_parameters` est `{}` (pas de `temperature`) pour les agents Claude Sonnet 4.5 (thinking mode requiert pas de temperature).
+## 14. Résolution de problèmes
 
 ### Le container n'est pas healthy
 
 ```bash
-docker logs code-interpreter-api --tail 50
+docker logs code-interpreter-api --tail 80
 ```
-→ Vérifier que Redis et MinIO sont accessibles, que les ports ne sont pas en conflit.
 
-### Les tracked changes montrent "AI-Agent" au lieu du nom de l'utilisateur
+Vérifier :
+- Redis et MinIO accessibles depuis le container (`docker exec code-interpreter-api ping -c1 code-interpreter-redis`)
+- L'image a bien été buildée (`docker images | grep agent-skills`)
+- `/opt/skills/` est non vide (sinon le mount `~/data/skills` est vide ou inexistant)
 
-→ Les instructions doivent contenir `{{current_user}}` qui est résolu par LibreChat. Vérifier que les instructions sont à jour dans MongoDB.
+### `AttributeError` sur `office.soffice` côté pptx
 
-### Le PPTX généré a des slides vides
+→ Le symlink `pptx/scripts/office` n'a pas été résolu. Re-syncer avec `cp -rL skills/. /home/damien/data/skills/`.
 
-→ `add_slide.py` crée des slides sans contenu. Utiliser `create_from_template.py` qui copie les placeholders du layout ET insère le sldId dans presentation.xml.
+### Les fichiers générés sont inaccessibles depuis LibreChat
+
+→ Vérifier `MINIO_ENDPOINT=code-interpreter-minio:9000` dans l'env du container code-interpreter-api ET que `code-interpreter-minio-init` a bien créé le bucket `code-interpreter-files` (logs : `docker logs code-interpreter-minio-init`).
+
+### `nsjail` échoue avec `clone(): Operation not permitted`
+
+→ Le container doit être `privileged: true` ET avoir `cap_add: [SYS_ADMIN, NET_ADMIN]` si vous utilisez la base `docker-compose.yml` upstream (la stack VPS utilise `privileged: true` qui inclut tout — choix moins fin mais plus simple).
+
+### LibreChat n'invoque pas le code-interpreter
+
+→ Vérifier dans `/home/damien/LibreChat/.env` : `LIBRECHAT_CODE_API_KEY` et `LIBRECHAT_CODE_BASEURL` présents, et la clé est identique au `API_KEY` du `.env` code-interpreter. Recréer LibreChat-API : `docker compose ... up -d --force-recreate api`.
+
+### Build Docker échoue sur `apt-get update`
+
+```
+E: Failed to fetch http://archive.ubuntu.com/... Mirror sync in progress?
+```
+→ Relancer après quelques minutes (fenêtre de sync Ubuntu mirrors).
+
+---
+
+## 15. Annexe — différence avec l'image upstream `usnavy13/LibreCodeInterpreter`
+
+Le fork `On-Behalf-AI/LibreCodeInterpreter`, branche `feat/agent-skills-runtime`, ajoute par rapport à upstream `main` :
+
+- **6 skills "métier"** (docx, pptx, xlsx, pdf, ffmpeg, dataviz) avec `AGENT_INSTRUCTIONS.md`, scripts Python, templates corporate.
+- **Lib partagée `office/`** (60 fichiers — pack/unpack DOCX/XLSX/PPTX, soffice helper, schémas XSD ISO29500).
+- **PTC bash server** (`docker/ptc_bash_server.py`) en plus du PTC Python.
+- **Décorrélation skills/image** (Phase 1, commit `61d860c`) : mount runtime au lieu de baking.
+- **Auth basic + x-api-key** + endpoint admin protégé par `MASTER_API_KEY`.
+- **Sandbox network avec allowlist proxy** (anti-SSRF) — variable `ENABLE_SANDBOX_NETWORK`.
+- **MinIO** maintenu (vs Garage upstream) via mapping des vars `S3_*`.
+
+Cf. `docs/MIGRATION_TO_NATIVE_SKILLS.md` pour le plan de migration vers les Skills natives LibreChat (v0.8.6+), qui rendra obsolète la partie "contenu" de la branche.
