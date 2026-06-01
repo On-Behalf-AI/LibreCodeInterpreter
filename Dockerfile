@@ -300,7 +300,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY src/ /app/src/
 COPY dashboard/ /app/dashboard/
-COPY skills/ /opt/skills/
+COPY lib/ /opt/lib/
 
 RUN find / -path /proc -prune -o -path /sys -prune -o \
     \( -perm -4000 -o -perm -2000 \) -type f -exec chmod u-s,g-s {} + 2>/dev/null || true

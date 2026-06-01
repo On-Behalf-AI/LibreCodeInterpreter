@@ -90,14 +90,12 @@ class SandboxExecutor:
             # Languages that get /proc access (proc_mask = "" = no masking):
             #   - Java needs /proc/self/exe to locate libjli.so.
             #   - Rust needs /proc/self/exe to locate its own binary path.
-            #   - Python needs /proc for LibreOffice (soffice) used by the
-            #     DOCX/XLSX/PPTX agent skills (legacy Python path, still in use
-            #     on this fork — the skills/* directory contains Python scripts
-            #     that use python-docx/python-pptx/lxml + subprocess soffice).
-            #   - Bash is the new entry point for skills via LibreChat's
-            #     bash_tool migration (PR #12767). soffice hard-fails with
-            #     "ERROR: /proc not mounted - LibreOffice is unlikely to work
-            #     well if at all" without /proc.
+            #   - Python and Bash need /proc for LibreOffice (soffice), used
+            #     by DOCX/XLSX/PPTX skills loaded from LibreChat. The lib/office
+            #     OOXML helpers (mounted at /opt/lib/office, see Dockerfile +
+            #     nsjail-base.cfg) shell out to soffice. Without /proc, soffice
+            #     hard-fails with "ERROR: /proc not mounted - LibreOffice is
+            #     unlikely to work well if at all".
             # nsjail still creates a separate PID namespace, so /proc only
             # shows sandbox processes — main host info disclosure risk is
             # /proc/cpuinfo and /proc/meminfo, acceptable in the trusted-tenant
@@ -201,19 +199,24 @@ class SandboxExecutor:
             "PATH": "/usr/local/bin:/usr/bin:/bin",
             "HOME": "/tmp",
             "TMPDIR": "/tmp",
-            "SKILLS_ROOT": "/opt/skills",
+            # /opt/lib is the runtime libs root (currently lib/office for OOXML
+            # helpers shared by docx/pptx/xlsx skills). Exposed via PYTHONPATH
+            # so `from office.soffice import …` resolves regardless of where
+            # the skill scripts live (typically /mnt/data/<skill>/scripts/).
+            "PYTHONPATH": "/opt/lib",
         }
 
         if normalized_lang in {"py", "python"}:
-            # PYTHONPATH includes the persistent skill-deps cache so installs
-            # from earlier executions (or other sessions) are importable. The
-            # cache lives under /opt/skill-deps and is mounted from a Docker
-            # named volume so it survives container restarts.
+            # PYTHONPATH includes /opt/lib (runtime libs), the persistent
+            # skill-deps cache (so installs from earlier executions or other
+            # sessions are importable; the cache lives under /opt/skill-deps
+            # and is mounted from a Docker named volume so it survives
+            # container restarts), and /mnt/data.
             env_whitelist.update(
                 {
                     "PYTHONUNBUFFERED": "1",
                     "PYTHONDONTWRITEBYTECODE": "1",
-                    "PYTHONPATH": f"{deps_root}/python:/mnt/data",
+                    "PYTHONPATH": f"/opt/lib:{deps_root}/python:/mnt/data",
                     "MPLCONFIGDIR": "/tmp/mplconfig",
                     "XDG_CACHE_HOME": "/tmp/.cache",
                     "XDG_CONFIG_HOME": "/tmp/.config",

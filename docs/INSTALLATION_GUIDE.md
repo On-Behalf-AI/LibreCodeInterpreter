@@ -1,8 +1,20 @@
 # Guide de déploiement — LibreCodeInterpreter (branche `feat/agent-skills-runtime`)
 
-Ce guide décrit comment redéployer **à l'identique du VPS `vmi2994848` (chat-dev.onbehalf.ai)** la stack LibreCodeInterpreter (image runtime + Redis + MinIO + skills mount) sur un nouveau serveur, intégrée à une instance LibreChat déjà en place.
+> **⚠️ Document partiellement obsolète depuis la branche `feat/runtime-only` (2026-06-01)**
+>
+> Cette branche a éliminé le bind-mount `~/data/skills:/opt/skills` et le répertoire `skills/` du repo. Les skills sont désormais gérées **exclusivement par LibreChat** via le module Skills natif (zip import). L'image LCI ne porte plus que le runtime (LibreOffice, pandoc, qpdf, ffmpeg) + la lib partagée `lib/office/` (montée à `/opt/lib/office/`).
+>
+> Toute section ci-dessous qui mentionne `~/data/skills/`, `/opt/skills/`, ou `SKILLS_ROOT` correspond à l'ancien mode (Phase 1) et n'est plus pertinente.
+>
+> Pour le nouveau workflow, voir :
+> - `docs/MIGRATION_TO_NATIVE_SKILLS.md` (plan complet)
+> - Repo `On-Behalf-AI/skillset` (source de vérité des skills, bundle + zip import dans LibreChat)
+>
+> Ce guide reste utile comme référence Docker/Caddy/MinIO mais doit être réécrit pour Phase 2.
 
-État reflété par ce guide : commit `61d860c` ("refactor: decouple skills from Docker image — Phase 1"). Les skills (scripts, instructions, templates) ne sont plus *bakées* dans l'image Docker ; elles sont montées au runtime depuis le filesystem hôte.
+Ce guide décrit comment redéployer **à l'identique du VPS `vmi2994848` (chat-dev.onbehalf.ai)** la stack LibreCodeInterpreter (image runtime + Redis + MinIO) sur un nouveau serveur, intégrée à une instance LibreChat déjà en place.
+
+État reflété par ce guide (Phase 1, désormais legacy) : commit `61d860c` ("refactor: decouple skills from Docker image — Phase 1"). Les skills étaient montées au runtime depuis le filesystem hôte. Sur `feat/runtime-only`, ce mécanisme est entièrement supprimé.
 
 ---
 
