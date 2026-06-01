@@ -14,8 +14,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# NOTE: `lib/` and `lib64/` removed from ignore — repo now ships runtime
+# helpers under lib/office/, COPYed to /opt/lib in the image (see Dockerfile).
+# venv-style lib/ stays ignored via venv/, env/, ENV/ below.
 parts/
 sdist/
 var/
