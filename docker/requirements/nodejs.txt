@@ -33,3 +33,5 @@ zod
 handlebars
 cheerio
 marked
+docx
+pptxgenjs

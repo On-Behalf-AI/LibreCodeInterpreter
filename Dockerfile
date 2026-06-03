@@ -53,6 +53,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpulse-dev libsdl2-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-ttf-dev \
     antiword unrtf \
     libreoffice-impress libreoffice-writer libreoffice-calc libreoffice-common \
+    fonts-liberation fonts-dejavu-core \
+    qpdf \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/requirements/python-core.txt /tmp/python-core.txt
