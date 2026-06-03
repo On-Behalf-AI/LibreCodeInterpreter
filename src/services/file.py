@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import List, Optional, Tuple, Dict, Any
 
 # Third-party imports
-import boto3
 import redis.asyncio as redis
 import structlog
 from botocore.exceptions import ClientError
@@ -25,13 +24,7 @@ class FileService(FileServiceInterface):
 
     def __init__(self):
         """Initialize the file service with S3 and Redis clients."""
-        self.s3_client = boto3.client(
-            "s3",
-            endpoint_url=settings.s3.endpoint_url,
-            aws_access_key_id=settings.s3_access_key,
-            aws_secret_access_key=settings.s3_secret_key,
-            region_name=settings.s3_region,
-        )
+        self.s3_client = settings.s3.make_client()
 
         # Initialize Redis client
         self.redis_client = redis.from_url(

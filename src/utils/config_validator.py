@@ -4,7 +4,6 @@ import logging
 import shutil
 from typing import List, Dict, Any
 import redis
-import boto3
 from botocore.exceptions import ClientError
 
 from ..config import settings
@@ -124,26 +123,18 @@ class ConfigValidator:
     def _validate_s3_connection(self):
         """Validate S3 storage connection."""
         try:
-            client = boto3.client(
-                "s3",
-                endpoint_url=settings.s3.endpoint_url,
-                aws_access_key_id=settings.s3_access_key,
-                aws_secret_access_key=settings.s3_secret_key,
-                region_name=settings.s3_region,
-            )
+            client = settings.s3.make_client()
 
-            # Test connection by listing buckets
-            response = client.list_buckets()
-            buckets = response.get("Buckets", [])
-
-            # Check if our bucket exists
-            bucket_exists = any(
-                bucket["Name"] == settings.s3_bucket for bucket in buckets
-            )
-            if not bucket_exists:
-                self.warnings.append(
-                    f"S3 bucket '{settings.s3_bucket}' does not exist - will be created"
-                )
+            try:
+                client.head_bucket(Bucket=settings.s3_bucket)
+            except ClientError as e:
+                code = e.response["Error"]["Code"]
+                if code in ("404", "NoSuchBucket"):
+                    self.warnings.append(
+                        f"S3 bucket '{settings.s3_bucket}' does not exist"
+                    )
+                else:
+                    raise
 
         except ClientError as e:
             if settings.api_debug:

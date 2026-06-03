@@ -39,8 +39,7 @@ def mock_redis_client():
 @pytest.fixture
 def file_service(mock_s3_client, mock_redis_client):
     """Create FileService with mocked clients."""
-    with patch("src.services.file.boto3") as mock_boto3:
-        mock_boto3.client.return_value = mock_s3_client
+    with patch("src.config.s3.S3Config.make_client", return_value=mock_s3_client):
         with patch("src.services.file.redis.from_url") as mock_redis_from_url:
             mock_redis_from_url.return_value = mock_redis_client
             service = FileService()

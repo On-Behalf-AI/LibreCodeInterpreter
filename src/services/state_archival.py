@@ -22,7 +22,6 @@ import io
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
-import boto3
 import structlog
 from botocore.exceptions import ClientError
 
@@ -58,13 +57,7 @@ class StateArchivalService:
             s3_client: Optional boto3 S3 client (creates new one if not provided)
         """
         self.state_service = state_service or StateService()
-        self.s3_client = s3_client or boto3.client(
-            "s3",
-            endpoint_url=settings.s3.endpoint_url,
-            aws_access_key_id=settings.s3_access_key,
-            aws_secret_access_key=settings.s3_secret_key,
-            region_name=settings.s3_region,
-        )
+        self.s3_client = s3_client or settings.s3.make_client()
         self.bucket_name = settings.s3_bucket
         self._bucket_checked = False
 
