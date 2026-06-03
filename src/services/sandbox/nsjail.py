@@ -203,12 +203,14 @@ class NsjailConfig:
         # Seccomp policy: block dangerous syscalls
         # - ptrace: prevents process inspection/debugging (BUG-006a)
         # - bind: was originally blocked to prevent server sockets even with
-        #   network access (BUG-006c), but bash sandboxes need it for tools
-        #   like LibreOffice which use AF_UNIX sockets internally for IPC.
-        #   Bash has the looser sandboxing model (also gets /proc), so allow
-        #   bind there. For other languages, keep blocking.
+        #   network access (BUG-006c), but the languages that drive
+        #   document-processing skills (Python, Java, Bash) need it for tools
+        #   like LibreOffice which use AF_UNIX sockets internally for IPC
+        #   between oosplash and soffice.bin.
+        #   Network namespace isolation (--iface_no_lo) already prevents
+        #   external connections, so allowing bind on AF_UNIX is safe.
         # Using ERRNO(1) so the process gets EPERM rather than SIGSYS
-        if normalized_lang == "bash":
+        if normalized_lang in ("py", "python", "java", "bash"):
             seccomp_policy = (
                 "POLICY policy { ERRNO(1) { ptrace } } USE policy DEFAULT ALLOW"
             )

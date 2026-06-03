@@ -90,17 +90,17 @@ class SandboxExecutor:
             # Some languages need /proc to function:
             #   - Java needs /proc/self/exe to locate libjli.so.
             #   - Rust needs /proc/self/exe to locate its own binary path.
-            #   - Bash sandboxes are the typical entry point for skills (e.g.,
-            #     the Anthropic pptx/docx/xlsx skills) that shell out to
-            #     LibreOffice (`soffice`) for PDF/image conversion. soffice
-            #     hard-fails with "ERROR: /proc not mounted - LibreOffice is
-            #     unlikely to work well if at all" without /proc.
+            #   - Python and Bash are typical entry points for skills that
+            #     shell out to LibreOffice (`soffice`) for document conversion
+            #     (DOCX/XLSX/PPTX → PDF). soffice hard-fails with "ERROR:
+            #     /proc not mounted - LibreOffice is unlikely to work well if
+            #     at all" without /proc.
             # nsjail still creates a separate PID namespace so the visible
             # /proc is restricted to the sandbox's own processes — main host
             # info disclosure risk is /proc/cpuinfo and /proc/meminfo, which
             # is acceptable in the trusted-tenant model these languages run in.
             lang = sandbox_info.language.lower().strip()
-            if lang in ("java", "rs", "bash"):
+            if lang in ("java", "rs", "py", "python", "bash"):
                 proc_mask = ""
             else:
                 proc_mask = (
@@ -212,6 +212,7 @@ class SandboxExecutor:
                     "PYTHONPATH": f"{deps_root}/python:/mnt/data",
                     "MPLCONFIGDIR": "/tmp/mplconfig",
                     "XDG_CACHE_HOME": "/tmp/.cache",
+                    "XDG_CONFIG_HOME": "/tmp/.config",
                     "MPLBACKEND": "Agg",
                 }
             )

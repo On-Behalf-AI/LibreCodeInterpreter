@@ -407,8 +407,10 @@ class SandboxPool:
                 f"mount -t tmpfs -o size=1k tmpfs /app/ssl && "
                 f"mount -t tmpfs -o size=1k tmpfs /app/dashboard && "
                 f"mount -t tmpfs -o size=1k tmpfs /app/src && "
-                # BUG-003: Hide /proc (REPL is Python-only, always safe to mask)
-                f"mount --bind /var/lib/code-interpreter/empty_proc /proc && "
+                # /proc kept accessible: Python REPL may invoke LibreOffice
+                # (soffice) for document-processing skills. soffice hard-fails
+                # without /proc. PID namespace inside nsjail still restricts
+                # visibility to sandbox processes.
                 # BUG-007: Ephemeral /tmp with noexec,nosuid,nodev
                 f"mount -t tmpfs -o {noexec_tmpfs}size={tmpfs_size}m,mode=1777 tmpfs /tmp && "
                 # BUG-008: Lock down other writable paths
