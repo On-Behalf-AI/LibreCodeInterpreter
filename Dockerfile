@@ -48,7 +48,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev libpng-dev libtiff-dev libopenjp2-7-dev \
     libfreetype6-dev liblcms2-dev libwebp-dev \
     tcl8.6-dev tk8.6-dev \
-    poppler-utils tesseract-ocr pandoc \
+    poppler-utils tesseract-ocr tesseract-ocr-fra tesseract-ocr-deu \
+    tesseract-ocr-spa tesseract-ocr-ita pandoc \
     portaudio19-dev flac ffmpeg \
     libpulse-dev libsdl2-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-ttf-dev \
     antiword unrtf \
