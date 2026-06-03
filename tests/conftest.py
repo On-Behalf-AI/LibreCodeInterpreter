@@ -115,10 +115,9 @@ def execution_service(mock_sandbox_manager):
 @pytest.fixture
 def file_service(mock_s3_client, mock_redis):
     """Create FileService instance with mocked dependencies."""
-    with patch("src.services.file.boto3") as mock_boto3, patch(
+    with patch("src.config.s3.S3Config.make_client", return_value=mock_s3_client), patch(
         "src.services.file.redis.from_url", return_value=mock_redis
     ):
-        mock_boto3.client.return_value = mock_s3_client
         service = FileService()
         yield service
 

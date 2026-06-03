@@ -145,8 +145,8 @@ class Settings(BaseSettings):
 
     # S3 Storage Configuration
     s3_endpoint: str = Field(default="localhost:3900")
-    s3_access_key: str = Field(default="test-access-key", min_length=3)
-    s3_secret_key: str = Field(default="test-secret-key", min_length=8)
+    s3_access_key: Optional[str] = Field(default=None)
+    s3_secret_key: Optional[str] = Field(default=None)
     s3_secure: bool = Field(default=False)
     s3_bucket: str = Field(default="code-interpreter-files")
     s3_region: str = Field(default="garage")
