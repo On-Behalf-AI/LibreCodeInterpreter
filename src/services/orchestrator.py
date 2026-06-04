@@ -355,8 +355,16 @@ class ExecutionOrchestrator:
         )
 
     def _mount_dedupe_key(self, file_info: Dict[str, Any]) -> str:
-        """Return the normalized filename key used for mount precedence."""
-        return OutputProcessor.sanitize_filename(file_info.get("filename", ""))
+        """Return the normalized relative-path key used for mount precedence.
+
+        Use the full sanitized relative path, not just the basename: skill
+        bundles legitimately ship multiple files with the same basename at
+        different depths (e.g. `scripts/__init__.py`,
+        `scripts/office/__init__.py`, `scripts/office/validators/__init__.py`).
+        Deduping by basename would collapse them to one entry and silently
+        drop the rest, breaking `from validators import ...`-style imports.
+        """
+        return OutputProcessor.sanitize_relative_path(file_info.get("filename", ""))
 
     def _merge_mounted_files(
         self, *groups: List[Dict[str, Any]]
